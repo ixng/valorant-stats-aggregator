@@ -1,0 +1,14 @@
+# macOS
+.DS_Store
+
+# Local notes, not part of the project
+valstats-tutor-prompt_.md
+
+# Secrets
+.env
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
