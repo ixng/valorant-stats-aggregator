@@ -13,7 +13,7 @@ def fetch_account(name, tag, api_key):
     if status_code == 404:
         raise ValueError(f"The riot id you are looking for doesn't exist. RIOT_ID: {name}#{tag}")
     if status_code == 401:
-        raise ValueError("The API key you requested has been rejected")
+        raise ValueError("The API key you sent has been rejected")
 
     #To handle all other errors that aren't to do with the api key and the riot id provided
     if status_code != 200:
