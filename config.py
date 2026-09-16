@@ -1,5 +1,6 @@
-
 import tomllib 
+import os
+from dotenv import load_dotenv
 
 #Read the TOML file. Return a list of (name, tag) pairs.
 def load_accounts(path):
@@ -33,3 +34,9 @@ def load_accounts(path):
 
 def load_api_key():
     """Load .env and return the key. Fail with a clear message if it's missing."""
+    load_dotenv()
+    henrik_key = os.getenv("HENRIK_KEY", "")
+    if not henrik_key:
+        raise ValueError("Either the .env file might be missing or the file exists without a HENRIK_KEY line.")
+    
+    return henrik_key.strip()
