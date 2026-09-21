@@ -4,7 +4,7 @@ Findings from testing the HenrikDev unofficial VALORANT API (`https://api.henrik
 
 ## Authentication
 
-The API reads the key from the `Authorization` header, with no `Bearer` prefix:
+The API reads the key from the `Authorization` header, with no prefix:
 
 ```
 Authorization: <key>
