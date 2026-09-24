@@ -86,6 +86,7 @@ def request(path, api_key, params=None):
 
         if (status_code == 429 or status_code >= 500):
             if attempt < MAX_ATTEMPTS:
+
                 exponential_wait_time = BASE_BACKOFF_DELAY ** attempt
                 try:
                     servers_wait_time = response.headers.get("Retry-After")
@@ -102,6 +103,17 @@ def request(path, api_key, params=None):
     raise RequestFailed(f"Requests failed after the {MAX_ATTEMPTS} attempts, with status code: {status_code}")
         
 
-
-
+def retry_delay_seconds(retry_after, attempt):
+    """Returns the amount of seconds the program has to wait before moving onto its next attempt.
+    
+    When the retry_after is above the waiting cap it will raise a RequestFailed exception error
+    """
+    exponential_wait_time = BASE_BACKOFF_DELAY ** attempt
+    try:
+        
+        if retry_after is None:
+            return exponential_wait_time
+        if retry_after
+    except ValueError:
+        return 
     ...
