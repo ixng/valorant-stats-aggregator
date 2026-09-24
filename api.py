@@ -1,8 +1,27 @@
 import requests
-
+import time
 BASE_URL = "https://api.henrikdev.xyz"
+MAX_ATTEMPTS = 3
+MIN_GAP_SECONDS = 2.0
+
+_last_request_at = None 
 
 
+class ApiError(Exception):
+    """Base for every failure raised by this module."""
+
+
+class AccountNotFound(ApiError):
+    """..."""
+
+
+class InvalidApiKey(ApiError):
+    """..."""
+
+
+class RequestFailed(ApiError):
+    """..."""
+    
 # Call the account endpoint and return the PUUID.
 def fetch_account(name, tag, api_key):
     url = f"{BASE_URL}/valorant/v2/account/{name}/{tag}"
@@ -24,3 +43,24 @@ def fetch_account(name, tag, api_key):
     data = response.json()["data"]
 
     return data["puuid"]
+
+def request(path, api_key, params=None):
+    """Send a GET to the API, respecting the rate limit and retrying transient failures.
+    Returns the parsed response. Raises on a permanent failure or after MAX_ATTEMPTS."""
+
+    global _last_request_at 
+    url = f"{BASE_URL}/{path}"
+    for attempt in range(MAX_ATTEMPTS):
+        sleep_time = 2 - (time.monotonic() - _last_request_at) 
+        if sleep_time > 0:
+            _last_request_at = time.monotonic()
+            response = requests.get(url,headers={"Authorization": api_key},params=params)
+            status_code = response.status_code
+            if status_code == 404 or status_code == 401:
+                return status_code
+                
+    
+
+
+
+    ...
