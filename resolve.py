@@ -34,6 +34,15 @@ def main():
         except ValueError as e:
             print(f" ERROR: {name}#{tag}: {e}", file=sys.stderr)
             failures += 1
+        except (api.AccountNotFound, api.RequestFailed) as e:
+            print(f" ERROR: {name}#{tag}: {e}", file=sys.stderr)
+            failures += 1
+        except api.InvalidApiKey as e:
+            print(f" ERROR: {e}", file=sys.stderr)
+            sys.exit(1)
+        finally:
+            conn.close()
+    
 
     if failures > 0:
         sys.exit(1)
