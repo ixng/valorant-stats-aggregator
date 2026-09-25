@@ -39,9 +39,9 @@ def main():
             failures += 1
         except api.InvalidApiKey as e:
             print(f" ERROR: {e}", file=sys.stderr)
-            sys.exit(1)
-        finally:
             conn.close()
+            sys.exit(1)
+
     
 
     if failures > 0:
