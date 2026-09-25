@@ -1,11 +1,10 @@
-from re import M
 import requests
 import time
 BASE_URL = "https://api.henrikdev.xyz"
 BASE_BACKOFF_DELAY = 2
 MAX_ATTEMPTS = 3
-MIN_GAP_SECONDS = 2.0
-
+MIN_RATE_LIMIT_SPACING_SECONDS = 2.0
+MAX_RETRY_AFTER_SECONDS = 60.0
 _last_request_at = None 
 
 
@@ -37,24 +36,8 @@ class RequestFailed(ApiError):
 
 # Call the account endpoint and return the PUUID.
 def fetch_account(name, tag, api_key):
-    url = f"{BASE_URL}/valorant/v2/account/{name}/{tag}"
-    response = requests.get(url, headers={"Authorization": api_key})
-    status_code = response.status_code
-
-    # 404: The riot id does not exist. 401: The server does not know who you are ie the api key is not recognised
-    if status_code == 404:
-        raise ValueError(
-            f"The riot id you are looking for doesn't exist. RIOT_ID: {name}#{tag}"
-        )
-    if status_code == 401:
-        raise ValueError("The API key you sent has been rejected")
-
-    # To handle all other errors that aren't to do with the api key and the riot id provided
-    if status_code != 200:
-        raise ValueError(f"Unexpected error. Status code: {status_code}")
-
-    data = response.json()["data"]
-
+    path = f"valorant/v2/account/{name}/{tag}"
+    data = request(path,api_key,{"name": name, "tag": tag})
     return data["puuid"]
 
 def request(path, api_key, params=None):
@@ -64,38 +47,67 @@ def request(path, api_key, params=None):
     global _last_request_at 
     url = f"{BASE_URL}/{path}"
 
-    for attempt in range(1,MAX_ATTEMPTS+1):
+
+    for attempt in range(1, MAX_ATTEMPTS + 1):
+
         if _last_request_at is None:
             sleep_time = 0.0
         else:
-            sleep_time = MIN_GAP_SECONDS - (time.monotonic() - _last_request_at)
+            sleep_time = MIN_RATE_LIMIT_SPACING_SECONDS - (time.monotonic() - _last_request_at)
 
         if sleep_time > 0:
             time.sleep(sleep_time)
 
-        _last_request_at = time.monotonic() 
-        response = requests.get(url,headers={"Authorization": api_key},params=params,timeout=(5,15)) #tuple (5,15) is used for the time out. 5s to connect(connection time out), 15s to read (how long youll wait for the server to produce an answer)
-        status_code = response.status_code
+        _last_request_at = time.monotonic()
 
+        failure = None
+        retry_after = None
+        try:
+            response = requests.get(url,headers={"Authorization": api_key},params=params,timeout=(5,15))
+        except requests.RequestException as e:
+
+
+
+
+
+
+
+
+
+
+
+
+    for attempt in range(1,MAX_ATTEMPTS+1):
+        if _last_request_at is None:
+            sleep_time = 0.0
+        else:
+            sleep_time = MIN_RATE_LIMIT_SPACING_SECONDS - (time.monotonic() - _last_request_at)
+
+        if sleep_time > 0:
+            time.sleep(sleep_time)
+
+        _last_request_at = time.monotonic()
+
+        try:
+            response = requests.get(url,headers={"Authorization": api_key},params=params,timeout=(5,15)) #tuple (5,15) is used for the time out. 5s to connect(connection time out), 15s to read (how long youll wait for the server to produce an answer)
+        except request.RequestException as e:
+            raise SystemExit(e)
+
+        status_code = response.status_code
 
         if status_code == 401:
             raise InvalidApiKey("The API key you sent has been rejected")
         if status_code == 404:
-            raise AccountNotFound
+            raise AccountNotFound(f"The account was not found, path: {path}")
 
 
         if (status_code == 429 or status_code >= 500):
+            # Stops the last attempt from sleeping pointlessly.
             if attempt < MAX_ATTEMPTS:
-
-                exponential_wait_time = BASE_BACKOFF_DELAY ** attempt
-                try:
-                    servers_wait_time = response.headers.get("Retry-After")
-                    if servers_wait_time is None:
-                        time.sleep(exponential_wait_time)
-                    else:
-                        time.sleep(int(servers_wait_time))
-                except ValueError:
-                    time.sleep(int(servers_wait_time))
+                retry_after_response = response.headers.get("Retry-After")
+                delay = retry_delay_seconds(retry_after_response,attempt)
+                time.sleep(delay)
+            
             continue
         
         return response.json()["data"]
@@ -108,12 +120,17 @@ def retry_delay_seconds(retry_after, attempt):
     
     When the retry_after is above the waiting cap it will raise a RequestFailed exception error
     """
-    exponential_wait_time = BASE_BACKOFF_DELAY ** attempt
+    backoff_wait_time = BASE_BACKOFF_DELAY ** attempt
     try:
+        if retry_after_seconds is None:
+            return backoff_wait_time
+
+        retry_after_seconds = int(retry_after)
         
-        if retry_after is None:
-            return exponential_wait_time
-        if retry_after
+        if retry_after_seconds <= MAX_RETRY_AFTER_SECONDS:
+            return retry_after_seconds
+        else: 
+            raise RequestFailed(f"The retry after time response is above the {MAX_RETRY_AFTER_SECONDS} seconds cap.")
     except ValueError:
-        return 
-    ...
+        return backoff_wait_time
+    
