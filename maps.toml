@@ -1,0 +1,62 @@
+# The competitive maps, prefilled into the maps lookup table so the dashboard can
+# show a map with no matches yet instead of omitting it.
+#
+# This list controls what the dashboard offers, not what the database accepts.
+# Ingestion still inserts any other map it meets, such as the team deathmatch
+# maps, so no match is left pointing at a missing lookup row.
+#
+# Ids come from GET /valorant/v1/content?locale=en-US on 2026-09-29.
+# A map leaving the active rotation does not remove it from match history, so
+# entries stay here once added.
+
+[[maps]]
+id = "224b0a95-48b9-f703-1bd8-67aca101a61f"
+name = "Abyss"
+
+[[maps]]
+id = "7eaecc1b-4337-bbf6-6ab9-04b8f06b3319"
+name = "Ascent"
+
+[[maps]]
+id = "2c9d57ec-4431-9c5e-2939-8f9ef6dd5cba"
+name = "Bind"
+
+[[maps]]
+id = "2fb9a4fd-47b8-4e7d-a969-74b4046ebd53"
+name = "Breeze"
+
+[[maps]]
+id = "1c18ab1f-420d-0d8b-71d0-77ad3c439115"
+name = "Corrode"
+
+[[maps]]
+id = "b529448b-4d60-346e-e89e-00a4c527a405"
+name = "Fracture"
+
+[[maps]]
+id = "2bee0dc9-4ffe-519b-1cbd-7fbe763a6047"
+name = "Haven"
+
+[[maps]]
+id = "e2ad5c54-4114-a870-9641-8ea21279579a"
+name = "Icebox"
+
+[[maps]]
+id = "2fe4ed3a-450a-948b-6d6b-e89a78e680a9"
+name = "Lotus"
+
+[[maps]]
+id = "fd267378-4d1d-484f-ff52-77821ed10dc2"
+name = "Pearl"
+
+[[maps]]
+id = "d960549e-485c-e861-8d71-aa9d1aed12a2"
+name = "Split"
+
+[[maps]]
+id = "756da597-416b-c0f2-f47b-afbdf28670bc"
+name = "Summit"
+
+[[maps]]
+id = "92584fbe-486a-b1b2-9faa-39b0f486b498"
+name = "Sunset"
