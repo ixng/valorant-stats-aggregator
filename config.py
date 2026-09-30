@@ -32,6 +32,38 @@ def load_accounts(path):
 
         return accountList
 
+def load_maps(path):
+    """Reads the toml file of the existing maps, returns their ids and names in an (id,name) tuple"""
+    map_list = []
+    id_list = set()
+
+    with open(path,"rb") as f:
+        data = tomllib.load(f)
+
+        if "maps" not in data:
+            raise ValueError(f"no [[maps]] found in {path}")
+        
+        maps = data["maps"]
+        for position,val_map in enumerate(maps,start=1):
+
+            if "id" not in val_map:
+                raise ValueError(f"{path}: map at {position}, is missing a map_id.")
+            map_id = val_map["id"]
+
+            if map_id in id_list:
+                raise ValueError(f"{path}: Id: {map_id} at position {position} already exists for another map")
+            id_list.add(map_id)
+
+            if "name" not in val_map:
+                raise ValueError(f"{path}: map {position} has no name.")
+            name = val_map["name"]
+
+            map_list.append((map_id,name))
+        
+        return map_list
+            
+
+    
 
 def load_api_key():
     # Reads .env and adds its entries to os.environ
