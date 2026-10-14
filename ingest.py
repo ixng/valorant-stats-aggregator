@@ -1,9 +1,9 @@
 import collections
-
+import json,zlib
 
 def first_bloods(match):
     """Groups the kills by round then, takes the one with the lowest time_in_round_in_ms in each round
-    and credit credit killer.puuid. Returns a Counter object mapping puuid to the players first blood tcounts."""
+    and credit killer.puuid. Returns a Counter object mapping puuid to the players first blood counts."""
 
     kill_events = match["kills"]
     kills_in_each_round = collections.defaultdict(list)
@@ -19,10 +19,12 @@ def first_bloods(match):
     return counter
     
 def performance_rows(match):
+
     match_id = match["metadata"]["match_id"]
     players = match["players"]
     list_of_players = []
     all_first_bloods = first_bloods(match)
+
     for player in players:
         puuid = player["puuid"]
         stats = player["stats"]
@@ -45,4 +47,36 @@ def performance_rows(match):
         list_of_players.append(row)
 
     return list_of_players
+
+def team_rows(match):
+
+    match_id = match["metadata"]["match_id"]
+    teams = match["teams"]
+    list_of_teams = []
+
+    for team in teams:
+        rounds = team["rounds"]
+        row = {
+            "match_id" : match_id,
+            "team_id" : team["team_id"],
+            "rounds_won" : rounds["won"],
+            "rounds_lost" : rounds["lost"],
+            "won" : int(team["won"]) 
+        }
+        list_of_teams.append(row)
     
+    return list_of_teams
+
+def match_row(match):
+    match_data = match["metadata"]
+    queue = match_data["queue"]
+    blob  = zlib.compress(json.dumps(match, separators=(",",":")).encode())
+    row = {
+            "match_id" : match_data["match_id"],
+            "map_id" : match_data["map"]["id"],
+            "queue_id" : "custom" if queue["name"] == "Custom Game" else queue["id"],
+            "started_at" : match_data["started_at"],
+            "raw" : blob
+          }
+    
+    return row
