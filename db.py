@@ -11,7 +11,7 @@ def connect(path):
 def create_accounts_table(conn):
     """Creates an account table only if it doesn't exist already"""
     conn.execute(
-        "CREATE TABLE IF NOT EXISTS accounts (puuid TEXT NOT NULL PRIMARY KEY, name NOT NULL TEXT, tag NOT NULL TEXT)"
+        "CREATE TABLE IF NOT EXISTS accounts (puuid TEXT NOT NULL PRIMARY KEY, name TEXT NOT NULL, tag TEXT NOT NULL)"
     )
     conn.commit()
 
