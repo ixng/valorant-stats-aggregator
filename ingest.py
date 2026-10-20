@@ -1,5 +1,7 @@
 import collections
-import json,zlib
+import json
+import zlib
+
 
 def first_bloods(match):
     """Groups the kills by round then, takes the one with the lowest time_in_round_in_ms in each round
@@ -69,14 +71,49 @@ def team_rows(match):
 
 def match_row(match):
     match_data = match["metadata"]
-    queue = match_data["queue"]
     blob  = zlib.compress(json.dumps(match, separators=(",",":")).encode())
     row = {
             "match_id" : match_data["match_id"],
             "map_id" : match_data["map"]["id"],
-            "queue_id" : "custom" if queue["name"] == "Custom Game" else queue["id"],
+            "queue_id" : queue_id(match_data),
             "started_at" : match_data["started_at"],
             "raw" : blob
           }
     
     return row
+
+def queue_id(match_data):
+    queue = match_data["queue"]
+    return "custom" if queue["name"] == "Custom Game" else queue["id"]
+
+def map_lookup_row(match):   
+    meta_data = match["metadata"]
+    map_data = meta_data["map"]
+    return {"map_id" : map_data["id"], "name" : map_data["name"], "is_competitive": 0 }
+
+def agent_lookup_rows(match):   
+    players_data = match["players"]
+    agents = []
+    
+    for player in players_data:
+        agent_data = player["agent"]
+        agent = {
+            "agent_id" : agent_data["id"],
+            "name" : agent_data["name"]
+        }
+        if agent not in agents:
+            agents.append(agent)
+    
+    return agents
+    
+def queue_lookup_row(match):
+    meta_data = match["metadata"]
+    queue_data = meta_data["queue"]
+
+    queue = {
+        "queue_id" : queue_id(meta_data),
+        "name" : queue_data["name"],
+        "mode_type" : queue_data["mode_type"]
+    }
+    return queue
+
