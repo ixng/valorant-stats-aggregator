@@ -89,7 +89,7 @@ def queue_id(match_data):
 def map_lookup_row(match):   
     meta_data = match["metadata"]
     map_data = meta_data["map"]
-    return {"map_id" : map_data["id"], "name" : map_data["name"], "is_competitive": 0 }
+    return {"map_id" : map_data["id"], "name" : map_data["name"], "is_standard_map": 0 }
 
 def agent_lookup_rows(match):   
     players_data = match["players"]
