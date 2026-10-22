@@ -77,14 +77,14 @@ def save_account(conn, puuid, name, tag):
     conn.commit()
 
 def insert_map(conn, row):
-    conn.execute("INSERT INTO maps (map_id,name, is_standard_map)"
-                "VALUES (:map_id, :name, :is_standard_map)" 
+    conn.execute("INSERT INTO maps (map_id,name, is_standard_map) "
+                "VALUES (:map_id, :name, :is_standard_map) " 
                 "ON CONFLICT (map_id) DO NOTHING", 
                 row)
 
 def insert_queue(conn, row):
-    conn.execute("INSERT INTO queues (queue_id ,mode_type, name)" 
-                "VALUES (:queue_id, :mode_type, :name)" 
+    conn.execute("INSERT INTO queues (queue_id ,mode_type, name) " 
+                "VALUES (:queue_id, :mode_type, :name) " 
                 "ON CONFLICT (queue_id) DO NOTHING", 
                 row)
 
@@ -92,24 +92,24 @@ def insert_match(conn, row):
     """Insert one match. Does nothing if it is already stored, since a finished match never changes."""
     conn.execute("INSERT INTO matches (match_id, map_id, queue_id, started_at, raw) "
                 "VALUES (:match_id, :map_id, :queue_id, :started_at, :raw) "
-                "ON CONFLICT (match_id) DO NOTHING",
+                "ON CONFLICT (match_id) DO NOTHING ",
                 row,
     )
 def insert_agents(conn, rows):
-    conn.executemany("INSERT INTO agents (agent_id, name)"
-                     "VALUES (:agent_id, :name)"
-                     "ON CONFLICT (agent_id) DO NOTHING",
+    conn.executemany("INSERT INTO agents (agent_id, name) "
+                     "VALUES (:agent_id, :name) "
+                     "ON CONFLICT (agent_id) DO NOTHING ",
                      rows   
                     )
 def insert_teams(conn, rows):
-    conn.executemany("INSERT INTO teams (match_id, team_id, rounds_won, rounds_lost, won)"
-                     "VALUES (:match_id, :team_id, :rounds_won, :rounds_lost, :won)"
+    conn.executemany("INSERT INTO teams (match_id, team_id, rounds_won, rounds_lost, won) "
+                     "VALUES (:match_id, :team_id, :rounds_won, :rounds_lost, :won) "
                      "ON CONFLICT (match_id,team_id) DO NOTHING",
                      rows   
                     )
 def insert_performances(conn, rows):
     """Insert the player rows for one match. Skips any already stored."""
-    conn.executemany("INSERT INTO performances (match_id, puuid, team_id, agent_id, score, kills, deaths, assists,first_bloods, headshots, bodyshots, legshots, damage_dealt)" 
-                    "VALUES (:match_id, :puuid, :team_id, :agent_id, :score, :kills, :deaths, :assists,:first_bloods, :headshots, :bodyshots, :legshots, :damage_dealt)" 
-                    "ON CONFLICT (match_id, puuid) DO NOTHING",
+    conn.executemany("INSERT INTO performances (match_id, puuid, team_id, agent_id, score, kills, deaths, assists,first_bloods, headshots, bodyshots, legshots, damage_dealt) " 
+                    "VALUES (:match_id, :puuid, :team_id, :agent_id, :score, :kills, :deaths, :assists,:first_bloods, :headshots, :bodyshots, :legshots, :damage_dealt) " 
+                    "ON CONFLICT (match_id, puuid) DO NOTHING ",
                     rows)

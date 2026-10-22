@@ -2,7 +2,8 @@ import collections
 import json
 import zlib
 import db
-
+import pathlib
+import sys
 DB_PATH = "valstats.db"
 
 
@@ -112,16 +113,16 @@ def agent_rows(match):
 def queue_row(match):
     meta_data = match["metadata"]
     queue_data = meta_data["queue"]
-
+    name = queue_data["name"]
+    mode_type = queue_data["mode_type"]
     queue = {
         "queue_id" : queue_id(meta_data),
-        "name" : queue_data["name"],
-        "mode_type" : queue_data["mode_type"]
+        "name" : name if name is not None else mode_type,
+        "mode_type" : mode_type
     }
     return queue
 
 def save_match(conn, match):
-
     with conn:
         db.insert_map(conn,map_row(match))
         db.insert_queue(conn,queue_row(match))
@@ -129,3 +130,31 @@ def save_match(conn, match):
         db.insert_match(conn,match_row(match))
         db.insert_teams(conn,team_rows(match))
         db.insert_performances(conn,performance_rows(match))
+
+def load_archive(conn, directory):
+    """Load every match in the saved archive pages into the database.
+
+    Reads the raw API responses saved under `directory` and passes each match
+    through save_match. Makes no API calls: this is the only source for matches
+    that have since aged out of the window the API serves.
+
+    Returns (files_read, matches_saved).
+    """
+    files_read = 0
+    matches_saved = 0
+
+    for path in sorted(pathlib.Path(directory).glob("*.json")):
+        try:
+            doc = json.loads(path.read_text())
+        except json.JSONDecodeError as e:
+            print(f"skipped {path.name}: not valid JSON ({e})", file=sys.stderr)
+            continue
+
+        files_read += 1
+        for match in doc.get("data") or []:
+            save_match(conn, match)
+            matches_saved += 1
+
+    return files_read, matches_saved
+
+
