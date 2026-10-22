@@ -1,6 +1,9 @@
 import collections
 import json
 import zlib
+import db
+
+DB_PATH = "valstats.db"
 
 
 def first_bloods(match):
@@ -86,12 +89,12 @@ def queue_id(match_data):
     queue = match_data["queue"]
     return "custom" if queue["name"] == "Custom Game" else queue["id"]
 
-def map_lookup_row(match):   
+def map_row(match):   
     meta_data = match["metadata"]
     map_data = meta_data["map"]
     return {"map_id" : map_data["id"], "name" : map_data["name"], "is_standard_map": 0 }
 
-def agent_lookup_rows(match):   
+def agent_rows(match):   
     players_data = match["players"]
     agents = []
     
@@ -106,7 +109,7 @@ def agent_lookup_rows(match):
     
     return agents
     
-def queue_lookup_row(match):
+def queue_row(match):
     meta_data = match["metadata"]
     queue_data = meta_data["queue"]
 
@@ -117,3 +120,12 @@ def queue_lookup_row(match):
     }
     return queue
 
+def save_match(conn, match):
+
+    with conn:
+        db.insert_map(conn,map_row(match))
+        db.insert_queue(conn,queue_row(match))
+        db.insert_agents(conn,agent_rows(match))
+        db.insert_match(conn,match_row(match))
+        db.insert_teams(conn,team_rows(match))
+        db.insert_performances(conn,performance_rows(match))
