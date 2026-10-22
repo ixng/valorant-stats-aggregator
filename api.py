@@ -42,6 +42,11 @@ def fetch_account(name, tag, api_key):
     data = request(path,api_key)
     return data["puuid"]
 
+def fetch_matches(puuid, api_key, start, size):
+    path = f"valorant/v4/by-puuid/matches/eu/pc/{puuid}"
+    data = request(path, api_key, params = {"size" : size, "start" : start})
+    return data
+
 def retry_delay_seconds(retry_after, attempt):
     """Returns the amount of seconds the program has to wait before moving onto its next attempt.
     
