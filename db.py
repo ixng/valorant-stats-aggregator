@@ -7,6 +7,14 @@ def connect(path):
     conn.execute("PRAGMA foreign_keys = ON")
     return conn
 
+def create_tables(conn):
+        create_accounts_table(conn)
+        create_agents_table(conn)
+        create_maps_table(conn)
+        create_matches_table(conn)
+        create_performances_table(conn)
+        create_queues_table(conn)
+        create_teams_table(conn)
 
 def create_accounts_table(conn):
     """Creates an account table only if it doesn't exist already"""
@@ -68,6 +76,13 @@ def find_puuid(conn, name, tag):
 
 def prefill_map(conn,map_id,name):
     conn.execute("INSERT INTO maps (map_id,name,is_standard_map) VALUES (:map_id, :name, 1) ON CONFLICT (map_id) DO UPDATE SET is_standard_map = 1", {"map_id" : map_id, "name": name})
+
+def prefill_maps(conn,maps):
+    with conn:
+        for map_id, name in maps:
+            prefill_map(conn,map_id,name)
+
+
 def save_account(conn, puuid, name, tag):
     """Saves an new account to the accounts database, however if the puuid already exists it only updates the name and tag on that account"""
     conn.execute(
@@ -113,3 +128,4 @@ def insert_performances(conn, rows):
                     "VALUES (:match_id, :puuid, :team_id, :agent_id, :score, :kills, :deaths, :assists,:first_bloods, :headshots, :bodyshots, :legshots, :damage_dealt) " 
                     "ON CONFLICT (match_id, puuid) DO NOTHING ",
                     rows)
+

@@ -16,6 +16,7 @@ def resolve_account(conn, name, tag, api_key):
     else:
         fetched_puuid = api.fetch_account(name, tag, api_key)
         db.save_account(conn, fetched_puuid, name, tag)
+        print(f"{name}#{tag} Resolved")
         return fetched_puuid
 
 
@@ -31,9 +32,6 @@ def main():
         try:
             resolve_account(conn, name, tag, api_key)
             print(f"{name}#{tag} Resolved")
-        except ValueError as e:
-            print(f" ERROR: {name}#{tag}: {e}", file=sys.stderr)
-            failures += 1
         except (api.AccountNotFound, api.RequestFailed) as e:
             print(f" ERROR: {name}#{tag}: {e}", file=sys.stderr)
             failures += 1

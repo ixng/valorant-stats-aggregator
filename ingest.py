@@ -1,12 +1,19 @@
 import collections
 import json
-import zlib
-import db
 import pathlib
 import sys
+import zlib
+
+import api
+import config
+import db
+import resolve
+
 DB_PATH = "valstats.db"
-
-
+CONFIG_PATH = "accounts.toml"
+MAP_PATH = "maps.toml"
+MAX_PAGES = 50
+SIZE = 10
 def first_bloods(match):
     """Groups the kills by round then, takes the one with the lowest time_in_round_in_ms in each round
     and credit killer.puuid. Returns a Counter object mapping puuid to the players first blood counts."""
@@ -157,4 +164,70 @@ def load_archive(conn, directory):
 
     return files_read, matches_saved
 
+def ingest_account(conn, puuid, api_key, label):
+    """Fetch and store every match the API still holds for one account.
 
+    Pages from newest to oldest until a page comes back empty or short, up to
+    MAX_PAGES as a backstop. Returns the number of matches saved. Raises the
+    api errors unchanged, so the caller decides whether to skip or stop.
+    """
+    saved = 0
+
+    for page_num in range(MAX_PAGES):
+        page = api.fetch_matches(puuid, api_key, page_num * SIZE, SIZE)
+
+        if not page:
+            break
+
+        for match in page:
+            save_match(conn, match)
+            saved += 1
+
+        if len(page) < SIZE:
+            break
+    else:
+        print(f"{label}: stopped at the {MAX_PAGES} page cap", file=sys.stderr)
+
+    return saved
+def main():
+    
+    api_key = config.load_api_key()
+    accounts = config.load_accounts(CONFIG_PATH)
+    conn = db.connect(DB_PATH)
+    failures = 0
+    total_matches = 0
+    try:
+        db.create_tables(conn)
+        db.prefill_maps(conn,config.load_maps(MAP_PATH))
+
+        for name, tag in accounts:
+            label = f"{name}#{tag}"
+            try:
+                puuid = resolve.resolve_account(conn, name, tag, api_key)
+                before = conn.execute("SELECT COUNT(*) FROM matches").fetchone()[0]
+                fetched = ingest_account(conn, puuid, api_key, label)
+                after = conn.execute("SELECT COUNT(*) FROM matches").fetchone()[0]
+                print(f"{label}: {fetched} matches fetched, {after - before} new")
+                total_matches += after - before  
+
+            except (api.AccountNotFound, api.RequestFailed) as e:
+                print(f" ERROR: {name}#{tag}: {e}", file=sys.stderr)
+                failures += 1
+            except api.InvalidApiKey as e:
+                print(f" ERROR: {e}", file=sys.stderr)
+                sys.exit(1)
+
+        print(f"{total_matches} new matches across {len(accounts)} accounts")
+
+    finally:
+        conn.close()
+    
+
+    if failures > 0:
+        return 1
+    else:
+        return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

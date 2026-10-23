@@ -4,10 +4,17 @@ import tomllib
 from dotenv import load_dotenv
 
 
+class ConfigError(Exception):
+    """Raised when a config file is missing, malformed or incomplete.
+
+    A person has to fix the file, so there is nothing for the caller to retry.
+    """
+
+
 def load_accounts(path):
     """Read the accounts config and return a list of (name, tag) pairs.
 
-    Raises ValueError if the file has no [[accounts]] entries, if "accounts"
+    Raises ConfigError if the file has no [[accounts]] entries, if "accounts"
     is not an array of tables, or if any entry is missing a name or tag.
     Empty strings count as missing, since an empty name would resolve to a
     404 at the API rather than failing here.
@@ -20,19 +27,19 @@ def load_accounts(path):
         accounts = data.get("accounts")
 
         if not accounts:
-            raise ValueError(f"{path}: no [[accounts]] entries found")
+            raise ConfigError(f"{path}: no [[accounts]] entries found")
         
         if not isinstance(accounts,list):
-            raise ValueError(f"{path}: expected [[accounts]] entries, but found a {type(accounts).__name__}.")
+            raise ConfigError(f"{path}: expected [[accounts]] entries, but found a {type(accounts).__name__}.")
         
         for position, account in enumerate(accounts, start=1):
             name = account.get("name")
             if not name:
-                raise ValueError(f"{path}: entry {position}: name is missing or empty.")
+                raise ConfigError(f"{path}: entry {position}: name is missing or empty.")
             
             tag = account.get("tag")
             if not tag:
-                raise ValueError(f"{path}: entry {position}: {name}'s tag is missing or empty.")
+                raise ConfigError(f"{path}: entry {position}: {name}'s tag is missing or empty.")
 
             account_list.append((name, tag))
 
@@ -46,7 +53,7 @@ def load_maps(path):
     inserts any other map it meets, so this list controls what is offered,
     not what the database accepts.
 
-    Raises ValueError if the file has no [[maps]] entries, if "maps" is not
+    Raises ConfigError if the file has no [[maps]] entries, if "maps" is not
     an array of tables, if an entry is missing an id or name, or if two
     entries share an id. The duplicate check belongs here rather than in the
     database, because the write path uses ON CONFLICT DO NOTHING and would
@@ -61,24 +68,24 @@ def load_maps(path):
         data = tomllib.load(f)
         val_maps = data.get("maps")
         if not val_maps:
-            raise ValueError(f"{path}: no [[maps]] entries found")
+            raise ConfigError(f"{path}: no [[maps]] entries found")
             
         if not isinstance(val_maps,list):
-            raise ValueError(f"{path}: expected [[maps]] entries, but found a {type(val_maps).__name__}.")
+            raise ConfigError(f"{path}: expected [[maps]] entries, but found a {type(val_maps).__name__}.")
     
         
         for position,val_map in enumerate(val_maps,start=1):
 
             map_name = val_map.get("name")
             if not map_name:
-                raise ValueError(f"{path}: entry {position}: name is missing or empty.")
+                raise ConfigError(f"{path}: entry {position}: name is missing or empty.")
             
             map_id = val_map.get("id")
             if not map_id:
-                raise ValueError(f"{path}: entry {position}: map_id is missing or empty.")
+                raise ConfigError(f"{path}: entry {position}: map_id is missing or empty.")
 
             if map_id in id_list:
-                raise ValueError(f"{path}: entry {position}: id {map_id} is already used by an earlier entry.")
+                raise ConfigError(f"{path}: entry {position}: id {map_id} is already used by an earlier entry.")
             id_list.add(map_id)
 
             map_list.append((map_id,map_name))
@@ -92,7 +99,7 @@ def load_api_key():
     the variable is set by the environment instead and no .env file exists.
     A missing file is not an error on its own: it shows up as a missing key.
 
-    Raises ValueError if HENRIK_KEY is unset or empty. Whitespace is stripped
+    Raises ConfigError if HENRIK_KEY is unset or empty. Whitespace is stripped
     from the value, since a stray space would otherwise reach the
     Authorization header and come back as a 401.
     """
@@ -101,7 +108,7 @@ def load_api_key():
     henrik_key = os.getenv("HENRIK_KEY", "")
 
     if not henrik_key:
-        raise ValueError(
+        raise ConfigError(
             "Either the .env file might be missing or the file exists without a HENRIK_KEY line."
         )
 
