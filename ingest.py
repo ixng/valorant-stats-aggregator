@@ -1,25 +1,43 @@
 import collections
 import json
+import pathlib
+import sys
 import zlib
+
+import api
+import config
+import db
+import resolve
+
+DB_PATH = "valstats.db"
+CONFIG_PATH = "accounts.toml"
+MAX_CONSECUTIVE_PAGE_FAILURES = 3
+MAP_PATH = "maps.toml"
+MAX_PAGES = 50
+SIZE = 10
 
 
 def first_bloods(match):
     """Groups the kills by round then, takes the one with the lowest time_in_round_in_ms in each round
-    and credit killer.puuid. Returns a Counter object mapping puuid to the players first blood counts."""
+    and credit killer.puuid. Returns a Counter object mapping puuid to the players first blood counts.
+    """
 
     kill_events = match["kills"]
     kills_in_each_round = collections.defaultdict(list)
     first_bloods_in_each_round = []
 
     for kill in kill_events:
-        kills_in_each_round[kill["round"]].append((kill["killer"]["puuid"],kill["time_in_round_in_ms"]))
-    
+        kills_in_each_round[kill["round"]].append(
+            (kill["killer"]["puuid"], kill["time_in_round_in_ms"])
+        )
+
     for kills in kills_in_each_round.values():
         first_bloods_in_each_round.append(kills[0][0])
-    
+
     counter = collections.Counter(first_bloods_in_each_round)
     return counter
-    
+
+
 def performance_rows(match):
 
     match_id = match["metadata"]["match_id"]
@@ -30,25 +48,26 @@ def performance_rows(match):
     for player in players:
         puuid = player["puuid"]
         stats = player["stats"]
-        first_blood_count = all_first_bloods.get(puuid,0)
+        first_blood_count = all_first_bloods.get(puuid, 0)
         row = {
-            "match_id" : match_id,
-            "puuid" : puuid,
-            "team_id" : player["team_id"],
-            "agent_id" : player["agent"]["id"],
-            "score" : stats["score"],
-            "kills" : stats["kills"],
-            "deaths" : stats["deaths"],
-            "assists" : stats["assists"],
-            "first_bloods" : first_blood_count,
-            "headshots" : stats["headshots"],
-            "bodyshots" : stats["bodyshots"],
-            "legshots" : stats["legshots"],
-            "damage_dealt" : stats["damage"]["dealt"]
+            "match_id": match_id,
+            "puuid": puuid,
+            "team_id": player["team_id"],
+            "agent_id": player["agent"]["id"],
+            "score": stats["score"],
+            "kills": stats["kills"],
+            "deaths": stats["deaths"],
+            "assists": stats["assists"],
+            "first_bloods": first_blood_count,
+            "headshots": stats["headshots"],
+            "bodyshots": stats["bodyshots"],
+            "legshots": stats["legshots"],
+            "damage_dealt": stats["damage"]["dealt"],
         }
         list_of_players.append(row)
 
     return list_of_players
+
 
 def team_rows(match):
 
@@ -59,61 +78,233 @@ def team_rows(match):
     for team in teams:
         rounds = team["rounds"]
         row = {
-            "match_id" : match_id,
-            "team_id" : team["team_id"],
-            "rounds_won" : rounds["won"],
-            "rounds_lost" : rounds["lost"],
-            "won" : int(team["won"]) 
+            "match_id": match_id,
+            "team_id": team["team_id"],
+            "rounds_won": rounds["won"],
+            "rounds_lost": rounds["lost"],
+            "won": int(team["won"]),
         }
         list_of_teams.append(row)
-    
+
     return list_of_teams
+
 
 def match_row(match):
     match_data = match["metadata"]
-    blob  = zlib.compress(json.dumps(match, separators=(",",":")).encode())
+    blob = zlib.compress(json.dumps(match, separators=(",", ":")).encode())
     row = {
-            "match_id" : match_data["match_id"],
-            "map_id" : match_data["map"]["id"],
-            "queue_id" : queue_id(match_data),
-            "started_at" : match_data["started_at"],
-            "raw" : blob
-          }
-    
+        "match_id": match_data["match_id"],
+        "map_id": match_data["map"]["id"],
+        "queue_id": queue_id(match_data),
+        "started_at": match_data["started_at"],
+        "raw": blob,
+    }
+
     return row
+
 
 def queue_id(match_data):
     queue = match_data["queue"]
     return "custom" if queue["name"] == "Custom Game" else queue["id"]
 
-def map_lookup_row(match):   
+
+def map_row(match):
     meta_data = match["metadata"]
     map_data = meta_data["map"]
-    return {"map_id" : map_data["id"], "name" : map_data["name"], "is_competitive": 0 }
+    return {"map_id": map_data["id"], "name": map_data["name"], "is_standard_map": 0}
 
-def agent_lookup_rows(match):   
+
+def agent_rows(match):
     players_data = match["players"]
     agents = []
-    
+
     for player in players_data:
         agent_data = player["agent"]
-        agent = {
-            "agent_id" : agent_data["id"],
-            "name" : agent_data["name"]
-        }
+        agent = {"agent_id": agent_data["id"], "name": agent_data["name"]}
         if agent not in agents:
             agents.append(agent)
-    
+
     return agents
-    
-def queue_lookup_row(match):
+
+
+def queue_row(match):
     meta_data = match["metadata"]
     queue_data = meta_data["queue"]
-
+    name = queue_data["name"]
+    mode_type = queue_data["mode_type"]
     queue = {
-        "queue_id" : queue_id(meta_data),
-        "name" : queue_data["name"],
-        "mode_type" : queue_data["mode_type"]
+        "queue_id": queue_id(meta_data),
+        "name": name if name is not None else mode_type,
+        "mode_type": mode_type,
     }
     return queue
 
+
+def save_match(conn, match):
+    with conn:
+        db.insert_map(conn, map_row(match))
+        db.insert_queue(conn, queue_row(match))
+        db.insert_agents(conn, agent_rows(match))
+        db.insert_match(conn, match_row(match))
+        db.insert_teams(conn, team_rows(match))
+        db.insert_performances(conn, performance_rows(match))
+
+
+def load_archive(conn, directory):
+    """Load every match in the saved archive pages into the database.
+
+    Reads the raw API responses saved under `directory` and passes each match
+    through save_match. Makes no API calls: this is the only source for matches
+    that have since aged out of the window the API serves.
+
+    Returns (files_read, matches_saved).
+    """
+    files_read = 0
+    matches_saved = 0
+
+    for path in sorted(pathlib.Path(directory).glob("*.json")):
+        try:
+            doc = json.loads(path.read_text())
+        except json.JSONDecodeError as e:
+            print(f"skipped {path.name}: not valid JSON ({e})", file=sys.stderr)
+            continue
+
+        files_read += 1
+        for match in doc.get("data") or []:
+            save_match(conn, match)
+            matches_saved += 1
+
+    return files_read, matches_saved
+
+
+def recover_page(conn, puuid, api_key, start, label):
+    """Refetch one page's offsets one at a time, after the page as a whole failed.
+
+    A page fails when a single match in it cannot be served, so fetching the offsets
+    individually saves the others. The bad match cannot be recorded and skipped by id,
+    because the request that would reveal its match_id is the one that fails, and its
+    offset moves as new matches are played, so this runs afresh each time.
+
+    Returns (saved, skipped).
+    """
+    saved = 0
+    skipped = 0
+
+    for offset in range(start, start + SIZE):
+        try:
+            page = api.fetch_matches(puuid, api_key, offset, 1)
+        except api.RequestFailed:
+            print(f"{label}: no match recoverable at offset {offset}", file=sys.stderr)
+            skipped += 1
+            continue
+
+        if not page:
+            break
+
+        save_match(conn, page[0])
+        saved += 1
+
+    return saved, skipped
+
+
+def ingest_account(conn, puuid, api_key, label):
+    """Fetch and store every match the API still holds for one account.
+
+    Pages from newest to oldest until a page comes back empty or short, up to
+    MAX_PAGES as a backstop.
+
+    A page that fails is recovered match by match rather than abandoning the account,
+    since everything older than it would otherwise be unreachable. The account is given
+    up on after MAX_CONSECUTIVE_PAGE_FAILURES failures in a row, which distinguishes one
+    unservable match from the API being down.
+
+    Returns (saved, skipped). AccountNotFound and InvalidApiKey propagate, since neither
+    improves on the next page.
+    """
+    saved = 0
+    skipped = 0
+    consecutive_failures = 0
+    for page_num in range(MAX_PAGES):
+        start = page_num * SIZE
+
+        try:
+            page = api.fetch_matches(puuid, api_key, start, SIZE)
+        except api.RequestFailed as e:
+            print(
+                f"{label}: page at offset {start} failed ({e}); "
+                "recovering it one match at a time",
+                file=sys.stderr,
+            )
+            page_saved, page_skipped = recover_page(conn, puuid, api_key, start, label)
+            saved += page_saved
+            skipped += page_skipped
+
+            consecutive_failures += 1
+            if consecutive_failures >= MAX_CONSECUTIVE_PAGE_FAILURES:
+                print(
+                    f"{label}: giving up after {consecutive_failures} page failures in a row",
+                    file=sys.stderr,
+                )
+                break
+            continue
+
+        consecutive_failures = 0
+        if not page:
+            break
+
+        for match in page:
+            save_match(conn, match)
+            saved += 1
+
+        if len(page) < SIZE:
+            break
+    else:
+        print(f"{label}: stopped at the {MAX_PAGES} page cap", file=sys.stderr)
+
+    return saved, skipped
+
+
+def main():
+
+    api_key = config.load_api_key()
+    accounts = config.load_accounts(CONFIG_PATH)
+    conn = db.connect(DB_PATH)
+    failures = 0
+    total_matches = 0
+    try:
+        db.create_tables(conn)
+        db.prefill_maps(conn, config.load_maps(MAP_PATH))
+
+        for name, tag in accounts:
+            label = f"{name}#{tag}"
+            try:
+                puuid = resolve.resolve_account(conn, name, tag, api_key)
+                before = conn.execute("SELECT COUNT(*) FROM matches").fetchone()[0]
+                fetched, skipped = ingest_account(conn, puuid, api_key, label)
+                after = conn.execute("SELECT COUNT(*) FROM matches").fetchone()[0]
+                summary = f"{label}: {fetched} matches fetched, {after - before} new"
+                if skipped:
+                    summary += f", {skipped} unavailable"
+                print(summary)
+                total_matches += after - before
+
+            except (api.AccountNotFound, api.RequestFailed) as e:
+                print(f" ERROR: {name}#{tag}: {e}", file=sys.stderr)
+                failures += 1
+            except api.InvalidApiKey as e:
+                print(f" ERROR: {e}", file=sys.stderr)
+                sys.exit(1)
+
+        print(f"{total_matches} new matches across {len(accounts)} accounts")
+
+    finally:
+        conn.close()
+
+    if failures > 0:
+        return 1
+    else:
+        return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
