@@ -1,3 +1,4 @@
+import argparse
 import collections
 import json
 import pathlib
@@ -15,6 +16,11 @@ MAX_CONSECUTIVE_PAGE_FAILURES = 3
 MAP_PATH = "maps.toml"
 MAX_PAGES = 50
 SIZE = 10
+
+
+# ----------------------------------------------------------------------------
+# Values the API does not provide
+# ----------------------------------------------------------------------------
 
 
 def first_bloods(match):
@@ -36,6 +42,90 @@ def first_bloods(match):
 
     counter = collections.Counter(first_bloods_in_each_round)
     return counter
+
+
+def queue_id(match_data):
+    queue = match_data["queue"]
+    return "custom" if queue["name"] == "Custom Game" else queue["id"]
+
+
+# ----------------------------------------------------------------------------
+# One match into rows, one function per table
+# ----------------------------------------------------------------------------
+
+
+def map_row(match):
+    meta_data = match["metadata"]
+    map_data = meta_data["map"]
+    return {"map_id": map_data["id"], "name": map_data["name"], "is_standard_map": 0}
+
+
+def queue_row(match):
+    meta_data = match["metadata"]
+    queue_data = meta_data["queue"]
+    name = queue_data["name"]
+    mode_type = queue_data["mode_type"]
+    queue = {
+        "queue_id": queue_id(meta_data),
+        "name": name if name is not None else mode_type,
+        "mode_type": mode_type,
+    }
+    return queue
+
+
+def agent_rows(match):
+    players_data = match["players"]
+    agents = []
+
+    for player in players_data:
+        agent_data = player["agent"]
+        agent = {"agent_id": agent_data["id"], "name": agent_data["name"]}
+        if agent not in agents:
+            agents.append(agent)
+
+    return agents
+
+
+def match_row(match):
+    match_data = match["metadata"]
+    row = {
+        "match_id": match_data["match_id"],
+        "map_id": match_data["map"]["id"],
+        "queue_id": queue_id(match_data),
+        "started_at": match_data["started_at"],
+    }
+
+    return row
+
+
+def archive_row(match):
+    match_data = match["metadata"]
+    blob = zlib.compress(json.dumps(match, separators=(",", ":")).encode())
+    row = {
+        "match_id": match_data["match_id"],
+        "raw": blob,
+    }
+    return row
+
+
+def team_rows(match):
+
+    match_id = match["metadata"]["match_id"]
+    teams = match["teams"]
+    list_of_teams = []
+
+    for team in teams:
+        rounds = team["rounds"]
+        row = {
+            "match_id": match_id,
+            "team_id": team["team_id"],
+            "rounds_won": rounds["won"],
+            "rounds_lost": rounds["lost"],
+            "won": int(team["won"]),
+        }
+        list_of_teams.append(row)
+
+    return list_of_teams
 
 
 def performance_rows(match):
@@ -69,75 +159,9 @@ def performance_rows(match):
     return list_of_players
 
 
-def team_rows(match):
-
-    match_id = match["metadata"]["match_id"]
-    teams = match["teams"]
-    list_of_teams = []
-
-    for team in teams:
-        rounds = team["rounds"]
-        row = {
-            "match_id": match_id,
-            "team_id": team["team_id"],
-            "rounds_won": rounds["won"],
-            "rounds_lost": rounds["lost"],
-            "won": int(team["won"]),
-        }
-        list_of_teams.append(row)
-
-    return list_of_teams
-
-
-def match_row(match):
-    match_data = match["metadata"]
-    blob = zlib.compress(json.dumps(match, separators=(",", ":")).encode())
-    row = {
-        "match_id": match_data["match_id"],
-        "map_id": match_data["map"]["id"],
-        "queue_id": queue_id(match_data),
-        "started_at": match_data["started_at"],
-        "raw": blob,
-    }
-
-    return row
-
-
-def queue_id(match_data):
-    queue = match_data["queue"]
-    return "custom" if queue["name"] == "Custom Game" else queue["id"]
-
-
-def map_row(match):
-    meta_data = match["metadata"]
-    map_data = meta_data["map"]
-    return {"map_id": map_data["id"], "name": map_data["name"], "is_standard_map": 0}
-
-
-def agent_rows(match):
-    players_data = match["players"]
-    agents = []
-
-    for player in players_data:
-        agent_data = player["agent"]
-        agent = {"agent_id": agent_data["id"], "name": agent_data["name"]}
-        if agent not in agents:
-            agents.append(agent)
-
-    return agents
-
-
-def queue_row(match):
-    meta_data = match["metadata"]
-    queue_data = meta_data["queue"]
-    name = queue_data["name"]
-    mode_type = queue_data["mode_type"]
-    queue = {
-        "queue_id": queue_id(meta_data),
-        "name": name if name is not None else mode_type,
-        "mode_type": mode_type,
-    }
-    return queue
+# ----------------------------------------------------------------------------
+# Writing a whole match
+# ----------------------------------------------------------------------------
 
 
 def save_match(conn, match):
@@ -146,8 +170,14 @@ def save_match(conn, match):
         db.insert_queue(conn, queue_row(match))
         db.insert_agents(conn, agent_rows(match))
         db.insert_match(conn, match_row(match))
+        db.insert_match_archive(conn, archive_row(match))
         db.insert_teams(conn, team_rows(match))
         db.insert_performances(conn, performance_rows(match))
+
+
+# ----------------------------------------------------------------------------
+# Loading the saved archive pages
+# ----------------------------------------------------------------------------
 
 
 def load_archive(conn, directory):
@@ -175,6 +205,11 @@ def load_archive(conn, directory):
             matches_saved += 1
 
     return files_read, matches_saved
+
+
+# ----------------------------------------------------------------------------
+# Fetching from the API
+# ----------------------------------------------------------------------------
 
 
 def recover_page(conn, puuid, api_key, start, label):
@@ -207,11 +242,14 @@ def recover_page(conn, puuid, api_key, start, label):
     return saved, skipped
 
 
-def ingest_account(conn, puuid, api_key, label):
-    """Fetch and store every match the API still holds for one account.
+def ingest_account(conn, puuid, api_key, label, full=False):
+    """Fetch and store this account's matches that are not already stored.
 
     Pages from newest to oldest until a page comes back empty or short, up to
-    MAX_PAGES as a backstop.
+    MAX_PAGES as a backstop. Normally it also stops at the first page whose matches
+    are all already stored, since matches arrive newest first and everything behind
+    such a page is older. Passing full keeps going to the end of the window instead,
+    which is how a gap left by an interrupted run gets healed.
 
     A page that fails is recovered match by match rather than abandoning the account,
     since everything older than it would otherwise be unreachable. The account is given
@@ -252,9 +290,19 @@ def ingest_account(conn, puuid, api_key, label):
         if not page:
             break
 
+        # Asked before saving: afterwards every match on the page is stored,
+        # so the answer would always be "stop".
+        page_ids = [match["metadata"]["match_id"] for match in page]
+        known = db.known_match_ids(conn, page_ids)
+
         for match in page:
             save_match(conn, match)
             saved += 1
+
+        if len(known) == len(page) and not full:
+            pages = page_num + 1
+            print(f"{label}: caught up after {pages} page{'s' if pages > 1 else ''}")
+            break
 
         if len(page) < SIZE:
             break
@@ -264,7 +312,31 @@ def ingest_account(conn, puuid, api_key, label):
     return saved, skipped
 
 
-def main():
+# ----------------------------------------------------------------------------
+# Entry point
+# ----------------------------------------------------------------------------
+
+
+def parse_args(argv=None):
+    """Read the command line. Returns the parsed arguments."""
+    parser = argparse.ArgumentParser(
+        description="Fetch Valorant matches for every configured account and store them."
+    )
+    parser.add_argument(
+        "--full",
+        action="store_true",
+        help="sweep each account's whole window instead of stopping at matches already stored",
+    )
+    return parser.parse_args(argv)
+
+
+def main(argv=None):
+    """Resolve and ingest every account in the config.
+
+    Reports fetched, new and unavailable counts per account, keeps going when one
+    account fails, and returns 1 if any did so the caller can exit non-zero.
+    """
+    args = parse_args(argv)
 
     api_key = config.load_api_key()
     accounts = config.load_accounts(CONFIG_PATH)
@@ -280,7 +352,9 @@ def main():
             try:
                 puuid = resolve.resolve_account(conn, name, tag, api_key)
                 before = conn.execute("SELECT COUNT(*) FROM matches").fetchone()[0]
-                fetched, skipped = ingest_account(conn, puuid, api_key, label)
+                fetched, skipped = ingest_account(
+                    conn, puuid, api_key, label, full=args.full
+                )
                 after = conn.execute("SELECT COUNT(*) FROM matches").fetchone()[0]
                 summary = f"{label}: {fetched} matches fetched, {after - before} new"
                 if skipped:
@@ -295,7 +369,8 @@ def main():
                 print(f" ERROR: {e}", file=sys.stderr)
                 sys.exit(1)
 
-        print(f"{total_matches} new matches across {len(accounts)} accounts")
+        mode = "full sweep" if args.full else "stopping at stored matches"
+        print(f"{total_matches} new matches across {len(accounts)} accounts ({mode})")
 
     finally:
         conn.close()
