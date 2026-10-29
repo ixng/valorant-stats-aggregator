@@ -235,3 +235,17 @@ def known_match_ids(conn, match_ids):
         f"SELECT match_id FROM matches WHERE match_id IN ({placeholders})", match_ids
     )
     return {row[0] for row in cursor}
+
+def match_counts(conn,puuid=None,queue_id="competitive"):
+    """Return (matches, wins). All accounts combined when puuid is None."""
+    cursor = conn.execute("SELECT COUNT(*), SUM(t.won)"
+                "FROM performances p "
+                "JOIN accounts a ON a.puuid = p.puuid "
+                "JOIN matches m ON m.match_id = p.match_id "
+                "JOIN teams t ON (t.match_id,t.team_id) = (p.match_id,p.team_id) "
+                "WHERE m.queue_id = :queue_id "
+                "AND (:puuid IS NULL OR p.puuid = :puuid)",
+                {"queue_id": queue_id, "puuid": puuid}
+                )
+    row = cursor.fetchone()
+    return row
