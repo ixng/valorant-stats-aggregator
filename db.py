@@ -9,6 +9,7 @@ def connect(path):
     """Opens the database at path, creating the file if it does not exist, and returns the connection"""
     conn = sqlite3.connect(path)
     conn.execute("PRAGMA foreign_keys = ON")
+    conn.row_factory = sqlite3.Row
     return conn
 
 
@@ -236,16 +237,98 @@ def known_match_ids(conn, match_ids):
     )
     return {row[0] for row in cursor}
 
-def match_counts(conn,puuid=None,queue_id="competitive"):
+
+def match_counts(conn, puuid=None, queue_id="competitive"):
     """Return (matches, wins). All accounts combined when puuid is None."""
-    cursor = conn.execute("SELECT COUNT(*), SUM(t.won)"
-                "FROM performances p "
-                "JOIN accounts a ON a.puuid = p.puuid "
-                "JOIN matches m ON m.match_id = p.match_id "
-                "JOIN teams t ON (t.match_id,t.team_id) = (p.match_id,p.team_id) "
-                "WHERE m.queue_id = :queue_id "
-                "AND (:puuid IS NULL OR p.puuid = :puuid)",
-                {"queue_id": queue_id, "puuid": puuid}
-                )
+    cursor = conn.execute(
+        "SELECT COUNT(*), SUM(t.won) "
+        "FROM performances p "
+        "JOIN accounts a ON a.puuid = p.puuid "
+        "JOIN matches m ON m.match_id = p.match_id "
+        "JOIN teams t ON (t.match_id,t.team_id) = (p.match_id,p.team_id) "
+        "WHERE m.queue_id = :queue_id "
+        "AND (:puuid IS NULL OR p.puuid = :puuid)",
+        {"queue_id": queue_id, "puuid": puuid},
+    )
     row = cursor.fetchone()
     return row
+
+
+def headline_stats(conn, puuid=None, queue_id="competitive"):
+    """Return the raw totals for these matches. All accounts combined when puuid is None.
+
+    Sums only: every ratio is derived by the caller.
+
+    The row deliberately holds two grains. `matches` and `wins` count distinct
+    match ids, so a match that two tracked accounts played together counts once.
+    Every other total is per appearance, and that is what keeps the per-round
+    rates correct: such a match contributes both players' scores and both
+    players' rounds, so the numerator and denominator rise together.
+    """
+    cursor = conn.execute(
+        "SELECT COUNT(DISTINCT m.match_id) AS matches, COUNT(DISTINCT CASE WHEN t.won = 1 THEN m.match_id END) AS wins, SUM(p.kills) AS kills, SUM(p.deaths) AS deaths , SUM(p.assists) AS assists, SUM(p.score) AS score, SUM(p.damage_dealt) AS damage, SUM(p.headshots) AS headshots, SUM(p.bodyshots) AS bodyshots, SUM(p.legshots) AS legshots, SUM(p.first_bloods) AS first_bloods, SUM(t.rounds_won + t.rounds_lost) AS rounds "
+        "FROM performances p "
+        "JOIN accounts a ON a.puuid = p.puuid "
+        "JOIN matches m ON m.match_id = p.match_id "
+        "JOIN teams t ON (t.match_id,t.team_id) = (p.match_id,p.team_id) "
+        "WHERE m.queue_id = :queue_id "
+        "AND (:puuid IS NULL OR p.puuid = :puuid)",
+        {"queue_id": queue_id, "puuid": puuid}
+    )
+    return cursor.fetchone()
+
+
+TOTALS = (
+        "COUNT(DISTINCT CASE WHEN t.won = 1 THEN m.match_id END) AS wins, "
+        "SUM(p.kills) AS kills, " 
+        "SUM(p.deaths) AS deaths, " 
+        "SUM(p.assists) AS assists, " 
+        "SUM(p.score) AS score, " 
+        "SUM(p.damage_dealt) AS damage, " 
+        "SUM(p.headshots) AS headshots, " 
+        "SUM(p.bodyshots) AS bodyshots, " 
+        "SUM(p.legshots) AS legshots, " 
+        "SUM(p.first_bloods) AS first_bloods, " 
+        "SUM(t.rounds_won + t.rounds_lost) AS rounds "
+        )
+
+SPLITS = {
+    "agent": {
+        "join" : "JOIN agents ON agents.agent_id = p.agent_id ",
+        "group" : "agents.name",
+        "label" : "agents.name",
+
+    },
+    "map" : {
+        "join" : "JOIN maps ON maps.map_id = m.map_id ",
+        "group" : "map.name",
+        "label" : "map.name",
+    },
+}
+
+def split_stats(conn, split, puuid=None, queue_id="competitive"):
+    """Return one row of totals per agent or per map.
+
+    split is a key of SPLITS. The same two grains as headline_stats apply.
+    """
+
+    if split not in SPLITS:
+        raise ValueError(f"")
+    
+    parts = SPLITS[split] 
+    
+    cursor = conn.execute(
+        f"SELECT {parts['label']} AS split_value, {TOTALS} "
+        "FROM performances p "
+        "JOIN accounts a ON a.puuid = p.puuid "
+        "JOIN matches m ON m.match_id = p.match_id "
+        "JOIN teams t ON (t.match_id,t.team_id) = (p.match_id, t.team_id) " 
+        f"{parts['join']} " 
+        "WHERE m.queue_id = :queue_id " 
+        "AND (:puuid IS NULL OR p.puuid = :puuid) "
+        f"GROUP BY {parts['group']} " 
+        "ORDER BY matches DESC ",
+        {"queue_id": queue_id, "puuid": puuid}
+    )
+
+    return cursor.fetchone()

@@ -75,6 +75,10 @@ The decisions worth explaining, and why they went that way.
 
 **Stats are stored as raw inputs, not as ratios.** Score and rounds, not ACS. Combined ACS is total score over total rounds, so averaging per-match ACS values gives the wrong answer.
 
+**Derived numbers keep full precision, and rounding happens at display.** The aggregation layer returns a win rate of 51.73913, not 51.7. A rounded value cannot be combined with anything further, and rounding inside the function means its tests have to match the rounding rather than the arithmetic. Formatting to one or two decimal places belongs to the terminal output and the dashboard templates.
+
+**The combined view counts matches, not appearances.** The tracked accounts queue together, so 493 competitive matches produce 615 performance rows. Counting rows would weigh a stacked match twice and report 615 matches played, so `matches` and `wins` count distinct match ids. The per-round totals stay per appearance, because combined ACS is the total score of every appearance divided by the rounds those appearances covered. This is unambiguous only because every shared match has the accounts on the same team. An account that played against the others would make "did we win" two different facts for one match.
+
 **Timestamps are stored in UTC and converted at display.** A stored local time is ambiguous at the autumn clock change, when 01:30 happens twice, and the information needed to disambiguate it is lost at write time.
 
 **Writes are idempotent.** Ingestion re-fetches matches it has already seen on every run. Each table has a primary key that identifies the row naturally, `(match_id, puuid)` for a performance, and conflicts resolve with `DO NOTHING` because a finished match never changes.
@@ -83,11 +87,15 @@ The decisions worth explaining, and why they went that way.
 
 **Errors are typed by whether retrying can help.** A 404 on a Riot ID is permanent and needs the config fixed, so it raises immediately and that account is skipped while the rest continue. A 429 or a 5xx is transient, so it is retried with doubling backoff, honouring `Retry-After` when present and capped at 60 seconds. A rejected key stops the whole run, since every remaining request would fail the same way.
 
-**Requests are spaced 2 seconds apart.** The free tier allows 30 requests a minute, which is one every 2 seconds. The spacing lives in the API client rather than in any caller, so every endpoint shares one limit.
+**Rate limiting reads the server's own counters rather than only pacing.** The free tier allows 30 requests a minute, and the API reports the remaining quota and the seconds until the window resets on every response. The client spaces requests 2.2 seconds apart, which is 27 a minute rather than exactly 30, and additionally waits for the advertised reset once the quota is spent. Spacing alone cannot know about requests made by an earlier run or by hand with the same key. The limiter lives in the API client rather than in any caller, so every endpoint shares one limit. The API never sends `Retry-After`, so a client that waits only for that header is guessing when the server has already given it the answer.
 
 ## Data constraint
 
-The API returns recent matches, not career history. Whatever it holds on the first ingestion run is the entire backfill that will ever exist, and nothing built later recovers matches that have aged out. That is why ingestion reliability matters here more than in a pipeline that can be re-run: a failed run that goes unnoticed for two weeks loses those two weeks permanently.
+The API serves a window of recent matches rather than career history. Measured across three accounts, that window holds 200 to 400 matches each, reaching back to August 2024.
+
+An earlier version of this section claimed the first ingestion run captured the only backfill that would ever exist. That was wrong. It came from a shell loop that read rate-limit error bodies as empty pages, because `jq '.data | length'` prints `0` for `null`, so an error and the end of the history looked identical.
+
+Matches do leave the window eventually, so each raw response is still archived at ingestion and `load_archive` can replay saved pages with no network calls. What changed is the urgency. A run that fails unnoticed for two weeks is now recoverable, because those matches are still inside the window. Reliability matters for a different reason: a silent partial failure produces aggregates that are wrong without looking wrong.
 
 ## Layout
 
