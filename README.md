@@ -13,9 +13,9 @@ Work in progress, built milestone by milestone.
 | 1. API key and one successful request | done |
 | 2. Config and identity resolution | done |
 | 3. API client with rate limiting and retries | done |
-| 4. Schema design | in progress |
-| 5. Ingestion | not started |
-| 6. Aggregation | not started |
+| 4. Schema design | done |
+| 5. Ingestion | done |
+| 6. Aggregation | in progress |
 | 7. Flask dashboard | not started |
 | 8. Scheduled runs | not started |
 
@@ -104,8 +104,11 @@ accounts.toml      accounts to track
 maps.toml          competitive maps prefilled into the lookup table
 config.py          loads the config files and the API key
 api.py             HTTP client: rate limiting, retries, typed errors
-db.py              SQLite schema and queries
+db.py              SQLite schema, writes and aggregation queries
 resolve.py         resolves accounts to PUUIDs
+ingest.py          fetches matches and stores them
+stats.py           turns the stored sums into rates
+report.py          prints the stats in a terminal
 docs/api-notes.md  findings from testing the API by hand
 ```
 

@@ -32,7 +32,10 @@ def create_tables(conn):
 def create_accounts_table(conn):
     """Creates an account table only if it doesn't exist already"""
     conn.execute(
-        "CREATE TABLE IF NOT EXISTS accounts (puuid TEXT NOT NULL PRIMARY KEY, name TEXT NOT NULL, tag TEXT NOT NULL)"
+        "CREATE TABLE IF NOT EXISTS accounts "
+        "(puuid TEXT NOT NULL PRIMARY KEY, "
+        "name TEXT NOT NULL, "
+        "tag TEXT NOT NULL)"
     )
     conn.commit()
 
@@ -40,21 +43,29 @@ def create_accounts_table(conn):
 def create_maps_table(conn):
     """Creates a maps table only if it doesn't exist already"""
     conn.execute(
-        "CREATE TABLE IF NOT EXISTS maps (map_id TEXT NOT NULL PRIMARY KEY, name TEXT NOT NULL, is_standard_map INTEGER NOT NULL)"
+        "CREATE TABLE IF NOT EXISTS maps "
+        "(map_id TEXT NOT NULL PRIMARY KEY, "
+        "name TEXT NOT NULL, "
+        "is_standard_map INTEGER NOT NULL)"
     )
     conn.commit()
 
 
 def create_agents_table(conn):
     conn.execute(
-        "CREATE TABLE IF NOT EXISTS agents (agent_id TEXT NOT NULL PRIMARY KEY, name TEXT NOT NULL)"
+        "CREATE TABLE IF NOT EXISTS agents "
+        "(agent_id TEXT NOT NULL PRIMARY KEY, "
+        "name TEXT NOT NULL)"
     )
     conn.commit()
 
 
 def create_queues_table(conn):
     conn.execute(
-        "CREATE TABLE IF NOT EXISTS queues (queue_id TEXT NOT NULL PRIMARY KEY, mode_type TEXT NOT NULL, name TEXT NOT NULL)"
+        "CREATE TABLE IF NOT EXISTS queues "
+        "(queue_id TEXT NOT NULL PRIMARY KEY, "
+        "mode_type TEXT NOT NULL, "
+        "name TEXT NOT NULL)"
     )
     conn.commit()
 
@@ -62,16 +73,20 @@ def create_queues_table(conn):
 def create_matches_table(conn):
     """Creates a matches table only if it doesn't exist already"""
     conn.execute(
-        "CREATE TABLE IF NOT EXISTS matches (match_id TEXT NOT NULL PRIMARY KEY, map_id TEXT NOT NULL REFERENCES maps(map_id), queue_id TEXT NOT NULL REFERENCES queues(queue_id), started_at TEXT NOT NULL)"
+        "CREATE TABLE IF NOT EXISTS matches "
+        "(match_id TEXT NOT NULL PRIMARY KEY, "
+        "map_id TEXT NOT NULL REFERENCES maps(map_id), "
+        "queue_id TEXT NOT NULL REFERENCES queues(queue_id), "
+        "started_at TEXT NOT NULL)"
     )
     conn.commit()
 
 
 def create_match_archives_table(conn):
     conn.execute(
-        "CREATE TABLE IF NOT EXISTS match_archives"
-        "(match_id TEXT NOT NULL REFERENCES matches(match_id),"
-        "raw BLOB NOT NULL,"
+        "CREATE TABLE IF NOT EXISTS match_archives "
+        "(match_id TEXT NOT NULL REFERENCES matches(match_id), "
+        "raw BLOB NOT NULL, "
         "PRIMARY KEY (match_id))"
     )
     conn.commit()
@@ -79,7 +94,13 @@ def create_match_archives_table(conn):
 
 def create_teams_table(conn):
     conn.execute(
-        "CREATE TABLE IF NOT EXISTS teams (match_id TEXT NOT NULL REFERENCES matches(match_id), team_id TEXT NOT NULL, won INTEGER NOT NULL, rounds_won INTEGER NOT NULL, rounds_lost INTEGER NOT NULL, PRIMARY KEY (match_id,team_id))"
+        "CREATE TABLE IF NOT EXISTS teams "
+        "(match_id TEXT NOT NULL REFERENCES matches(match_id),"
+        "team_id TEXT NOT NULL, "
+        "won INTEGER NOT NULL, "
+        "rounds_won INTEGER NOT NULL, "
+        "rounds_lost INTEGER NOT NULL, "
+        "PRIMARY KEY (match_id,team_id))"
     )
     conn.commit()
 
@@ -120,10 +141,19 @@ def find_puuid(conn, name, tag):
     return row[0] if row else None
 
 
+def all_accounts(conn):
+    """Return every stored account, ordered by name so output is stable."""
+    return conn.execute(
+        "SELECT name, tag, puuid FROM accounts ORDER BY name"
+    ).fetchall()
+
+
 def save_account(conn, puuid, name, tag):
     """Saves an new account to the accounts database, however if the puuid already exists it only updates the name and tag on that account"""
     conn.execute(
-        "INSERT INTO accounts (puuid, name, tag) VALUES (:puuid, :name, :tag) ON CONFLICT (puuid) DO UPDATE SET name = :name, tag = :tag",
+        "INSERT INTO accounts (puuid, name, tag) "
+        "VALUES (:puuid, :name, :tag) "
+        "ON CONFLICT (puuid) DO UPDATE SET name = :name, tag = :tag",
         {"puuid": puuid, "name": name, "tag": tag},
     )
     conn.commit()
@@ -136,7 +166,9 @@ def save_account(conn, puuid, name, tag):
 
 def prefill_map(conn, map_id, name):
     conn.execute(
-        "INSERT INTO maps (map_id,name,is_standard_map) VALUES (:map_id, :name, 1) ON CONFLICT (map_id) DO UPDATE SET is_standard_map = 1",
+        "INSERT INTO maps (map_id,name,is_standard_map) "
+        "VALUES (:map_id, :name, 1) "
+        "ON CONFLICT (map_id) DO UPDATE SET is_standard_map = 1 ",
         {"map_id": map_id, "name": name},
     )
 
@@ -273,38 +305,39 @@ def headline_stats(conn, puuid=None, queue_id="competitive"):
         "JOIN teams t ON (t.match_id,t.team_id) = (p.match_id,p.team_id) "
         "WHERE m.queue_id = :queue_id "
         "AND (:puuid IS NULL OR p.puuid = :puuid)",
-        {"queue_id": queue_id, "puuid": puuid}
+        {"queue_id": queue_id, "puuid": puuid},
     )
     return cursor.fetchone()
 
 
 TOTALS = (
-        "COUNT(DISTINCT CASE WHEN t.won = 1 THEN m.match_id END) AS wins, "
-        "SUM(p.kills) AS kills, " 
-        "SUM(p.deaths) AS deaths, " 
-        "SUM(p.assists) AS assists, " 
-        "SUM(p.score) AS score, " 
-        "SUM(p.damage_dealt) AS damage, " 
-        "SUM(p.headshots) AS headshots, " 
-        "SUM(p.bodyshots) AS bodyshots, " 
-        "SUM(p.legshots) AS legshots, " 
-        "SUM(p.first_bloods) AS first_bloods, " 
-        "SUM(t.rounds_won + t.rounds_lost) AS rounds "
-        )
+    "COUNT(DISTINCT m.match_id) AS matches,"
+    "COUNT(DISTINCT CASE WHEN t.won = 1 THEN m.match_id END) AS wins, "
+    "SUM(p.kills) AS kills, "
+    "SUM(p.deaths) AS deaths, "
+    "SUM(p.assists) AS assists, "
+    "SUM(p.score) AS score, "
+    "SUM(p.damage_dealt) AS damage, "
+    "SUM(p.headshots) AS headshots, "
+    "SUM(p.bodyshots) AS bodyshots, "
+    "SUM(p.legshots) AS legshots, "
+    "SUM(p.first_bloods) AS first_bloods, "
+    "SUM(t.rounds_won + t.rounds_lost) AS rounds "
+)
 
 SPLITS = {
     "agent": {
-        "join" : "JOIN agents ON agents.agent_id = p.agent_id ",
-        "group" : "agents.name",
-        "label" : "agents.name",
-
+        "join": "JOIN agents ON agents.agent_id = p.agent_id ",
+        "group": "agents.name",
+        "label": "agents.name",
     },
-    "map" : {
-        "join" : "JOIN maps ON maps.map_id = m.map_id ",
-        "group" : "map.name",
-        "label" : "map.name",
+    "map": {
+        "join": "JOIN maps ON maps.map_id = m.map_id ",
+        "group": "maps.name",
+        "label": "maps.name",
     },
 }
+
 
 def split_stats(conn, split, puuid=None, queue_id="competitive"):
     """Return one row of totals per agent or per map.
@@ -313,22 +346,22 @@ def split_stats(conn, split, puuid=None, queue_id="competitive"):
     """
 
     if split not in SPLITS:
-        raise ValueError(f"")
-    
-    parts = SPLITS[split] 
-    
+        raise ValueError(f"unknown split {split!r}, expected one of {sorted(SPLITS)}")
+
+    parts = SPLITS[split]
+
     cursor = conn.execute(
         f"SELECT {parts['label']} AS split_value, {TOTALS} "
         "FROM performances p "
         "JOIN accounts a ON a.puuid = p.puuid "
         "JOIN matches m ON m.match_id = p.match_id "
-        "JOIN teams t ON (t.match_id,t.team_id) = (p.match_id, t.team_id) " 
-        f"{parts['join']} " 
-        "WHERE m.queue_id = :queue_id " 
+        "JOIN teams t ON (t.match_id,t.team_id) = (p.match_id, p.team_id) "
+        f"{parts['join']} "
+        "WHERE m.queue_id = :queue_id "
         "AND (:puuid IS NULL OR p.puuid = :puuid) "
-        f"GROUP BY {parts['group']} " 
+        f"GROUP BY {parts['group']} "
         "ORDER BY matches DESC ",
-        {"queue_id": queue_id, "puuid": puuid}
+        {"queue_id": queue_id, "puuid": puuid},
     )
 
-    return cursor.fetchone()
+    return cursor.fetchall()
