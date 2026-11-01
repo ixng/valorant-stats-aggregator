@@ -109,8 +109,29 @@ resolve.py         resolves accounts to PUUIDs
 ingest.py          fetches matches and stores them
 stats.py           turns the stored sums into rates
 report.py          prints the stats in a terminal
+export_d1.py       writes the aggregates out as SQL for the deployed API
+worker/            the Cloudflare Worker and its D1 schema
 docs/api-notes.md  findings from testing the API by hand
 ```
+
+## Deployed API
+
+The aggregates are published as a read-only JSON API on Cloudflare Workers, backed by D1:
+
+**https://valstats-api.ixng.workers.dev**
+
+| Route | Returns |
+|---|---|
+| `/` | the accounts held, with ready-made URLs for each view |
+| `/stats/{account}` | that account's overall totals and rates |
+| `/stats/{account}/agent` | one entry per agent |
+| `/stats/{account}/map` | one entry per map |
+
+`{account}` is `combined` or a percent-encoded Riot ID, so `donner%20kebab%23bossm`.
+
+**Ingestion stays local.** The Worker holds no API key and calls no third-party service. `export_d1.py` reads the database through the same functions `report.py` uses and writes the derived totals as SQL, which wrangler pushes to D1. No per-match rows and no raw responses are published, so the nine other players in each match never leave the machine.
+
+**Rates are computed in the Worker, not stored**, for the same reason the local database stores raw sums: a stored percentage cannot be re-aggregated. The cost is that the derivation exists twice, in `stats.py` and in `worker/src/index.ts`, and the two have to be changed together.
 
 ## Notes
 

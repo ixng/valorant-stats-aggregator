@@ -1,0 +1,17 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "valstats-api",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-10-01",
+  "observability": { "enabled": true },
+
+  // Binds the D1 database to env.DB inside the Worker. The id identifies the
+  // database; it grants nothing without the account credentials wrangler holds.
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "valstats",
+      "database_id": "c62c9985-ca82-42b1-b8a8-c8c4abb1d5e6"
+    }
+  ]
+}
