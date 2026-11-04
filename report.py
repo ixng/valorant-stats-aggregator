@@ -54,8 +54,10 @@ def format_row(label, totals):
 
 
 def parse_args(argv=None):
-    parser = argparse.ArgumentParser(description="Print the stats already stored by ingest.py. Reads the local "
-    "database only and makes no API calls.")
+    parser = argparse.ArgumentParser(
+        description="Print the stats already stored by ingest.py. Reads the local "
+        "database only and makes no API calls."
+    )
 
     parser.add_argument(
         "--split",
