@@ -1,0 +1,8 @@
+# Test fixture: the second entry has no name key at all.
+
+[[accounts]]
+name = "donner kebab"
+tag = "bossm"
+
+[[accounts]]
+tag = "fmab"

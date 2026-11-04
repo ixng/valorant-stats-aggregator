@@ -1,0 +1,9 @@
+# Test fixture: the second entry has an empty name.
+
+[[accounts]]
+name = "donner kebab"
+tag = "bossm"
+
+[[accounts]]
+name = ""
+tag = "fmab"
