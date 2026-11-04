@@ -79,7 +79,7 @@ The decisions worth explaining, and why they went that way.
 
 **The combined view counts matches, not appearances.** The tracked accounts queue together, so 493 competitive matches produce 615 performance rows. Counting rows would weigh a stacked match twice and report 615 matches played, so `matches` and `wins` count distinct match ids. The per-round totals stay per appearance, because combined ACS is the total score of every appearance divided by the rounds those appearances covered. This is unambiguous only because every shared match has the accounts on the same team. An account that played against the others would make "did we win" two different facts for one match.
 
-**Timestamps are stored in UTC and converted at display.** A stored local time is ambiguous at the autumn clock change, when 01:30 happens twice, and the information needed to disambiguate it is lost at write time.
+**Timestamps are stored in UTC and converted at display.** A stored local time is ambiguous at the autumn clock change, when 01:30 happens twice, and the information needed to disambiguate it is lost at write time. They are stored as ISO 8601 text, which sorts lexicographically in the same order as it sorts chronologically. A date range filter is therefore a plain string comparison with no parsing, and `started_at >= '2026-09-01'` selects everything from that day onward. Ranges are written half open, lower bound inclusive and upper bound exclusive, because `<= '2026-10-24'` would drop every match played on the 24th.
 
 **Writes are idempotent.** Ingestion re-fetches matches it has already seen on every run. Each table has a primary key that identifies the row naturally, `(match_id, puuid)` for a performance, and conflicts resolve with `DO NOTHING` because a finished match never changes.
 
@@ -96,6 +96,26 @@ The API serves a window of recent matches rather than career history. Measured a
 An earlier version of this section claimed the first ingestion run captured the only backfill that would ever exist. That was wrong. It came from a shell loop that read rate-limit error bodies as empty pages, because `jq '.data | length'` prints `0` for `null`, so an error and the end of the history looked identical.
 
 Matches do leave the window eventually, so each raw response is still archived at ingestion and `load_archive` can replay saved pages with no network calls. What changed is the urgency. A run that fails unnoticed for two weeks is now recoverable, because those matches are still inside the window. Reliability matters for a different reason: a silent partial failure produces aggregates that are wrong without looking wrong.
+
+## Verification
+
+The aggregation was checked against Tracker.gg for one account over one act, ten competitive matches.
+
+| metric | this project | Tracker.gg |
+| --- | --- | --- |
+| matches | 10 | 10 |
+| wins | 6 | 6 |
+| win rate | 60.0% | 60.0% |
+| K/D | 0.97 | 0.97 |
+| ACS | 194.1 | 194.1 |
+| headshot % | 21.8% | 21.8% |
+| ADR | 129.7 | 129.4 |
+
+Six of the seven agree exactly. ADR differs by 0.3.
+
+The cause is damage accounting rather than arithmetic. ACS divides by the same round count and agrees to the decimal, so the denominator is right and the difference is in the damage total. Summing the round-by-round damage events in the archived responses shows that the match-level `damage.dealt` field counts damage dealt to teammates: across the 50 archived matches it totals 129,192 against 128,825 for enemy damage alone, 0.285% higher. The observed ADR gap is 0.24%, the same direction and close to the same size. Tracker appears to count enemy damage only.
+
+A residual 367 damage over those 50 matches is still unexplained, which is 0.03%. The archive holds 50 of that account's 184 matches, so it cannot be settled from what is stored.
 
 ## Layout
 
