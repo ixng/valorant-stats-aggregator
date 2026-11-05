@@ -5,6 +5,9 @@ nothing here depends on valstats.db existing and no test can contaminate
 another.
 """
 
+import re
+import sqlite3
+
 import pytest
 
 import db
@@ -112,16 +115,24 @@ def add_match(
 # ----------------------------------------------------------------------------
 
 
-@pytest.mark.skip(reason="not written yet")
 def test_shared_match_counts_once_for_the_combined_view(conn):
     """Two tracked accounts in one match is one match, not two.
 
     This is the bug the real database had: 615 performance rows across 493
     matches, because the accounts queue together.
     """
+    add_match(conn, "match-shared", [(ME, {}), (MATE, {})])
+
+    totals = db.headline_stats(conn)
+
+    # 40 kills is 20 each, so both rows reached the query. Without this the
+    # test would also pass if insert_performances had written only one row,
+    # because one row collapses to one match just as well as two do. The
+    # assertion below only means something once this one holds.
+    assert totals["kills"] == 40
+    assert totals["matches"] == 1
 
 
-@pytest.mark.skip(reason="not written yet")
 def test_shared_match_sums_both_appearances(conn):
     """The two grains in one row.
 
@@ -129,11 +140,40 @@ def test_shared_match_sums_both_appearances(conn):
     appearance, so ACS over a shared match uses both players' scores and
     both players' rounds.
     """
+    add_match(conn, "match-shared", [(ME, {}), (MATE, {})])
+
+    combined = db.headline_stats(conn)
+    mine = db.headline_stats(conn, puuid=ME)
+
+    # Both rows join to the same single teams row, so its 20 rounds are
+    # counted once per appearance: 4000 score and 20 rounds each.
+    assert combined["score"] == 8000
+    assert combined["rounds"] == 40
+    assert mine["score"] == 4000
+    assert mine["rounds"] == 20
+
+    # The property that makes the double grain correct rather than merely
+    # consistent. Numerator and denominator both doubled, so the rate a
+    # person reads is identical whether the match is viewed combined or for
+    # one account. Counting rounds once while summing both scores would put
+    # ACS at 400 here, which is the failure this guards against.
+    assert combined["score"] / combined["rounds"] == mine["score"] / mine["rounds"]
 
 
-@pytest.mark.skip(reason="not written yet")
 def test_untracked_players_are_excluded(conn):
     """A performance row whose puuid is not in accounts contributes nothing."""
+    # STRANGER is one of the nine other players in a real match. The fixture
+    # never called save_account for them, so the JOIN on accounts drops the
+    # row. Archived matches hold all ten players, so this is not hypothetical.
+    add_match(conn, "match-shared", [(ME, {}), (MATE, {}), (STRANGER, {})])
+
+    stored_rows = conn.execute("SELECT COUNT(*) FROM performances").fetchone()[0]
+    totals = db.headline_stats(conn)
+
+    # Three rows went in, two came out. Asserting the stored count first is
+    # what separates "the join excluded them" from "the insert never happened".
+    assert stored_rows == 3
+    assert totals["kills"] == 40
 
 
 # ----------------------------------------------------------------------------
@@ -141,14 +181,35 @@ def test_untracked_players_are_excluded(conn):
 # ----------------------------------------------------------------------------
 
 
-@pytest.mark.skip(reason="not written yet")
 def test_other_queues_are_excluded(conn):
     """A deathmatch has no rounds and would make ACS meaningless."""
+    add_match(conn, "match-comp", [(ME, {})])
+    add_match(conn, "match-dm", [(ME, {})], queue_id="deathmatch")
+
+    competitive = db.headline_stats(conn)
+    deathmatch = db.headline_stats(conn, queue_id="deathmatch")
+
+    # The deathmatch is stored and reachable, it is just filtered out of the
+    # default view. Querying it explicitly proves the arrange worked, so a
+    # failed insert cannot masquerade as a working filter.
+    assert competitive["matches"] == 1
+    assert competitive["kills"] == 20
+    assert deathmatch["matches"] == 1
 
 
-@pytest.mark.skip(reason="not written yet")
 def test_storing_a_match_twice_changes_nothing(conn):
     """Ingestion re-fetches matches it has already seen on every run."""
+    add_match(conn, "match-twice", [(ME, {})])
+    first = dict(db.headline_stats(conn))
+
+    add_match(conn, "match-twice", [(ME, {})])
+    second = dict(db.headline_stats(conn))
+
+    # Every insert is ON CONFLICT DO NOTHING, so the second pass is a no-op
+    # rather than a duplicate or an error. Comparing whole rows catches a
+    # double count in any column, not just the ones named in other tests.
+    assert first == second
+    assert conn.execute("SELECT COUNT(*) FROM performances").fetchone()[0] == 1
 
 
 # ----------------------------------------------------------------------------
@@ -156,16 +217,38 @@ def test_storing_a_match_twice_changes_nothing(conn):
 # ----------------------------------------------------------------------------
 
 
-@pytest.mark.skip(reason="not written yet")
 def test_empty_database_returns_zero_matches(conn):
     """What report.format_row's guard is defending against."""
+    stats_row = db.headline_stats(conn)
+    total_matches = stats_row["matches"]
+    total_kills = stats_row["kills"]
+    assert total_kills is None
+    assert total_matches == 0
 
 
-@pytest.mark.skip(reason="not written yet")
 def test_split_stats_rejects_an_unknown_split(conn):
     """The allowlist. A caller's split name is only ever a dict key."""
+    with pytest.raises(
+        ValueError,
+        match=re.escape("unknown split 'agents', expected one of ['agent', 'map']"),
+    ):
+        db.split_stats(conn, "agents")
 
 
-@pytest.mark.skip(reason="not written yet")
 def test_foreign_keys_are_enforced(conn):
-    """connect() sets PRAGMA foreign_keys = ON, which is per connection."""
+    """connect() sets PRAGMA foreign_keys = ON, which is per connection.
+
+    SQLite ignores foreign keys by default, and the setting does not live in
+    the file, so a connection opened anywhere else in the codebase without the
+    pragma would accept a match pointing at a map that does not exist. This
+    test exists to catch that pragma being dropped from connect().
+    """
+    orphan = {
+        "match_id": "match-orphan",
+        "map_id": "map-haven",
+        "queue_id": "competitive",
+        "started_at": "2026-09-01T12:00:00Z",
+    }
+
+    with pytest.raises(sqlite3.IntegrityError, match="FOREIGN KEY constraint failed"):
+        db.insert_match(conn, orphan)
