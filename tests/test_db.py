@@ -12,8 +12,7 @@ import pytest
 
 import db
 
-# One player's stat line. Tests override only the fields they care about,
-# so a test about counting matches is not cluttered with headshot numbers.
+# One player's stat line. Tests override only the fields they care about.
 STATS = {
     "score": 4000,
     "kills": 20,
@@ -125,10 +124,8 @@ def test_shared_match_counts_once_for_the_combined_view(conn):
 
     totals = db.headline_stats(conn)
 
-    # 40 kills is 20 each, so both rows reached the query. Without this the
-    # test would also pass if insert_performances had written only one row,
-    # because one row collapses to one match just as well as two do. The
-    # assertion below only means something once this one holds.
+    # 40 kills is 20 each, so both rows reached the query. One row collapses
+    # to one match too, so the assertion below means nothing without this one.
     assert totals["kills"] == 40
     assert totals["matches"] == 1
 
@@ -152,26 +149,22 @@ def test_shared_match_sums_both_appearances(conn):
     assert mine["score"] == 4000
     assert mine["rounds"] == 20
 
-    # The property that makes the double grain correct rather than merely
-    # consistent. Numerator and denominator both doubled, so the rate a
-    # person reads is identical whether the match is viewed combined or for
-    # one account. Counting rounds once while summing both scores would put
-    # ACS at 400 here, which is the failure this guards against.
+    # Numerator and denominator both doubled, so the rate is the same either
+    # way. Counting the rounds once while summing both scores gives 400.
     assert combined["score"] / combined["rounds"] == mine["score"] / mine["rounds"]
 
 
 def test_untracked_players_are_excluded(conn):
     """A performance row whose puuid is not in accounts contributes nothing."""
-    # STRANGER is one of the nine other players in a real match. The fixture
-    # never called save_account for them, so the JOIN on accounts drops the
-    # row. Archived matches hold all ten players, so this is not hypothetical.
+    # STRANGER stands for the nine other players a stored match really holds.
+    # No save_account call, so the JOIN on accounts drops the row.
     add_match(conn, "match-shared", [(ME, {}), (MATE, {}), (STRANGER, {})])
 
     stored_rows = conn.execute("SELECT COUNT(*) FROM performances").fetchone()[0]
     totals = db.headline_stats(conn)
 
-    # Three rows went in, two came out. Asserting the stored count first is
-    # what separates "the join excluded them" from "the insert never happened".
+    # Three rows in, two out. The stored count separates "the join excluded
+    # them" from "the insert never happened".
     assert stored_rows == 3
     assert totals["kills"] == 40
 
@@ -189,9 +182,8 @@ def test_other_queues_are_excluded(conn):
     competitive = db.headline_stats(conn)
     deathmatch = db.headline_stats(conn, queue_id="deathmatch")
 
-    # The deathmatch is stored and reachable, it is just filtered out of the
-    # default view. Querying it explicitly proves the arrange worked, so a
-    # failed insert cannot masquerade as a working filter.
+    # Querying the deathmatch explicitly proves it was stored, so a failed
+    # insert cannot masquerade as a working filter.
     assert competitive["matches"] == 1
     assert competitive["kills"] == 20
     assert deathmatch["matches"] == 1
@@ -205,9 +197,8 @@ def test_storing_a_match_twice_changes_nothing(conn):
     add_match(conn, "match-twice", [(ME, {})])
     second = dict(db.headline_stats(conn))
 
-    # Every insert is ON CONFLICT DO NOTHING, so the second pass is a no-op
-    # rather than a duplicate or an error. Comparing whole rows catches a
-    # double count in any column, not just the ones named in other tests.
+    # Comparing whole rows catches a double count in any column, not just the
+    # ones other tests name.
     assert first == second
     assert conn.execute("SELECT COUNT(*) FROM performances").fetchone()[0] == 1
 
