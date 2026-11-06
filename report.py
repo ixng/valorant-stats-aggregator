@@ -30,12 +30,27 @@ def heading(first_column):
     )
 
 
+def _cell(value, width, places):
+    """Format one numeric cell, or a right-aligned dash when the value is None.
+
+    stats.derive returns None for a ratio whose denominator is zero, and
+    f"{None:>6.1f}" raises TypeError. The dash is padded to the column width
+    so a row with a gap still lines up with the heading.
+    """
+    if value is None:
+        return f"{'-':>{width}}"
+    return f"{value:>{width}.{places}f}"
+
+
 def format_row(label, totals):
     """Return one line of output for one row of raw totals.
 
     Rounding happens here and nowhere else, which is why derive keeps full
-    precision. A filter matching nothing gives matches = 0 and NULL for every
-    sum, so that case is reported instead of dividing by it.
+    precision.
+
+    stats.derive handles the no-matches case, so the early return below is
+    presentation rather than protection: one "no matches" line reads better
+    than a row of five dashes.
     """
     if not totals["matches"]:
         return f"{label:{LABEL_WIDTH}} {'no matches':>7}"
@@ -45,17 +60,19 @@ def format_row(label, totals):
         f"{label:{LABEL_WIDTH}} "
         f"{totals['matches']:>7} "
         f"{totals['wins']:>5} "
-        f"{derived['win_rate']:>6.1f} "
-        f"{derived['kd']:>5.2f} "
-        f"{derived['acs']:>6.1f} "
-        f"{derived['adr']:>6.1f} "
-        f"{derived['hs_percent']:>5.1f}"
+        f"{_cell(derived['win_rate'], 6, 1)} "
+        f"{_cell(derived['kd'], 5, 2)} "
+        f"{_cell(derived['acs'], 6, 1)} "
+        f"{_cell(derived['adr'], 6, 1)} "
+        f"{_cell(derived['hs_percent'], 5, 1)}"
     )
 
 
 def parse_args(argv=None):
-    parser = argparse.ArgumentParser(description="Print the stats already stored by ingest.py. Reads the local "
-    "database only and makes no API calls.")
+    parser = argparse.ArgumentParser(
+        description="Print the stats already stored by ingest.py. Reads the local "
+        "database only and makes no API calls."
+    )
 
     parser.add_argument(
         "--split",

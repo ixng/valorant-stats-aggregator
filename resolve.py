@@ -40,8 +40,6 @@ def main():
             conn.close()
             sys.exit(1)
 
-    
-
     if failures > 0:
         sys.exit(1)
     else:
