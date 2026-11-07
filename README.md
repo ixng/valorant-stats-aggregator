@@ -2,7 +2,9 @@
 
 One combined stat table across several Valorant accounts, plus per-account breakdowns, with splits by agent and by map.
 
-Tracker.gg shows each account separately, so judging how I am actually playing means checking them one at a time. This pulls match data for every account I own into a local SQLite database and aggregates across all of them.
+I made this because Tracker.gg shows each account separately, so there is inconvenience in having multiple tabs open when I am trying to check multiple accounts all at once (definitely NOT because I have multiple smurf accounts). This pulls the match data for every account I own into a local SQLite database and aggregates across all of them. I plan to eventually make Multi-user accounts with Django, which include logins, linking accounts, background syncing through one shared rate limiter. To turn this into an actual small scale product.
+
+Right now the aggregates are published as a read-only JSON API on Cloudflare Workers, backed by D1, as proof the aggregation and the API requesting works. Heres the link: **https://valstats-api.ixng.workers.dev** (also talked about below where it is explained in more detail).
 
 ## Status
 
@@ -15,8 +17,8 @@ Work in progress, built milestone by milestone.
 | 3. API client with rate limiting and retries | done |
 | 4. Schema design | done |
 | 5. Ingestion | done |
-| 6. Aggregation | in progress |
-| 7. Flask dashboard | not started |
+| 6. Aggregation and CI tests | done |
+| 7. Flask dashboard | in progress |
 | 8. Scheduled runs | not started |
 
 ## Stack
@@ -79,7 +81,7 @@ The decisions worth explaining, and why they went that way.
 
 **The combined view counts matches, not appearances.** The tracked accounts queue together, so 493 competitive matches produce 615 performance rows. Counting rows would weigh a stacked match twice and report 615 matches played, so `matches` and `wins` count distinct match ids. The per-round totals stay per appearance, because combined ACS is the total score of every appearance divided by the rounds those appearances covered. This is unambiguous only because every shared match has the accounts on the same team. An account that played against the others would make "did we win" two different facts for one match.
 
-**Timestamps are stored in UTC and converted at display.** A stored local time is ambiguous at the autumn clock change, when 01:30 happens twice, and the information needed to disambiguate it is lost at write time. They are stored as ISO 8601 text, which sorts lexicographically in the same order as it sorts chronologically. A date range filter is therefore a plain string comparison with no parsing, and `started_at >= '2026-09-01'` selects everything from that day onward. Ranges are written half open, lower bound inclusive and upper bound exclusive, because `<= '2026-10-24'` would drop every match played on the 24th.
+**Timestamps are stored in UTC and converted at display.** A stored local time is ambiguous at the autumn clock change, showed when 01:30 happens twice, and the information needed to disambiguate it is lost at write time. They are stored as ISO 8601 text, which sorts lexicographically in the same order as it sorts chronologically. A date range filter is therefore a plain string comparison with no parsing, and `started_at >= '2026-09-01'` selects everything from that day onward. Ranges are written half open, lower bound inclusive and upper bound exclusive, because `<= '2026-10-24'` would drop every match played on the 24th.
 
 **Writes are idempotent.** Ingestion re-fetches matches it has already seen on every run. Each table has a primary key that identifies the row naturally, `(match_id, puuid)` for a performance, and conflicts resolve with `DO NOTHING` because a finished match never changes. `DO NOTHING` keeps the stored row rather than the incoming one, so re-ingesting a match whose stats differ silently discards the new values. That is the correct behaviour here and only here: a completed match is immutable, so a difference means the stored copy is right and the new one is noise. It would be the wrong resolution for anything still in progress, where the later read is the accurate one and `DO UPDATE` would be needed instead.
 
@@ -153,6 +155,3 @@ The aggregates are published as a read-only JSON API on Cloudflare Workers, back
 
 **Rates are computed in the Worker, not stored**, for the same reason the local database stores raw sums: a stored percentage cannot be re-aggregated. The cost is that the derivation exists twice, in `stats.py` and in `worker/src/index.ts`, and the two have to be changed together.
 
-## Notes
-
-[docs/api-notes.md](docs/api-notes.md) records what testing the API showed, including the undocumented auth header, the 10 match per request cap, and the deathmatch response shape.
