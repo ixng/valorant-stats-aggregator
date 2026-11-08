@@ -147,7 +147,7 @@ Resolves every account in the config and caches the result. Exits 0 when every a
 python ingest.py
 ```
 
-Stops at the first page whose matches are all already stored, which makes a routine run take about five seconds rather than ten minutes.
+Stops at the first page whose matches are all already stored, which makes a routine run take about five seconds rather than ten minutes. PS first ingestion may take 4-10 minutes depending on how many accounts you're trying to ingest.
 
 ```bash
 python ingest.py --full
