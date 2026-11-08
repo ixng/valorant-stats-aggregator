@@ -1,5 +1,5 @@
 # Valorant Stats Aggregator
-
+[![CI](https://github.com/ixng/valorant-stats-aggregator/actions/workflows/ci.yml/badge.svg)](https://github.com/ixng/valorant-stats-aggregator/actions/workflows/ci.yml)
 One combined stat table across several Valorant accounts, plus per-account breakdowns, with splits by agent and by map.
 
 I made this because Tracker.gg shows each account separately, so there is inconvenience in having multiple tabs open when I am trying to check multiple accounts all at once (definitely NOT because I have multiple smurf accounts). This pulls the match data for every account I own into a local SQLite database and aggregates across all of them. I plan to eventually make Multi-user accounts with Django, which include logins, linking accounts, background syncing through one shared rate limiter. To turn this into an actual small scale product.
@@ -8,22 +8,34 @@ Right now the aggregates are published as a read-only JSON API on Cloudflare Wor
 
 ## Status
 
-Work in progress, built milestone by milestone.
+Work in progress! Initially I structured my project in milestones as shown below. However, whilst working on the project I have made many changes as continuously adding CI tests to make sure there are no errors on merges, and even plan to use Django's ORM for records whilst continuing to use raw SQL for aggregation, and even add per-user account tracking, Postgres for storage and a real server I can use this application on.
 
-| Milestone | State |
+OLD IDEA (with which what is done and what is not/ in progress)
+| ACT | State |
 |---|---|
 | 1. API key and one successful request | done |
 | 2. Config and identity resolution | done |
 | 3. API client with rate limiting and retries | done |
 | 4. Schema design | done |
 | 5. Ingestion | done |
-| 6. Aggregation and CI tests | done |
+| 6. Aggregation | done |
 | 7. Flask dashboard | in progress |
 | 8. Scheduled runs | not started |
 
+With user accounts now in the scope, the web layer is written once in Django instead allowing: authentication, migrations and an admin interface are configuration rather than code.
+
+NEW ADDITIONS! Which progress from Milestone 6 onwards
+| SEASON | State |
+|---|---|
+| 1. Capture the data already archived but not stored | in progress |
+| 2. Django, including the web interface | not started |
+| 3. User accounts and queued ingestion | not started |
+| 4. Deployment and scheduled runs | not started |
+
 ## Stack
 
-Python 3.12, SQLite, and Flask for the dashboard. Match data comes from the [HenrikDev unofficial VALORANT API](https://api.henrikdev.xyz), because Riot's official VALORANT API does not issue personal keys and a multi-account tracker is not an approved production use case.
+Python 3.12 and SQLite, with Django for the web layer once it exists. Match data comes from the [HenrikDev unofficial VALORANT API](https://docs.henrikdev.xyz/valorant/general), because Riot's official VALORANT API does not issue personal keys and a multi-account tracker is not an approved production use case.
+
 
 Dependencies are `requests` and `python-dotenv`. Everything else is standard library: `sqlite3`, `tomllib`, `zlib`.
 
@@ -35,7 +47,7 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-Create a `.env` file in the project root with a key from the HenrikDev Discord:
+Create a `.env` file in the project root with a key from the HenrikDev Discord (https://api.henrikdev.xyz/dashboard/):
 
 ```
 HENRIK_KEY=your-key-here
@@ -59,11 +71,28 @@ tag = "bossm"
 python resolve.py
 ```
 
-Resolves every account in the config to its PUUID and caches it. Exits 0 when every account succeeded and 1 if any failed, so a scheduled run can be checked by its exit status.
+Resolves every account in the config to its PUUID and caches it. Exits 0 when every account succeeded and 1 if any failed, so a scheduled run can be checked by its exit status, when made later on.
+
+## Tests and CI
+
+28 tests, run by GitHub Actions on every push and every pull request along with
+`ruff` and `black --check`.
+
+```bash
+pytest -v
+```
+
+| File | Tests | What it covers |
+|---|---|---|
+| `tests/test_config.py` | 13 | Every way a config file can be malformed |
+| `tests/test_db.py` | 8 | The per-match counting rule, the queue filter, idempotency, the split allowlist, the foreign key pragma |
+| `tests/test_stats.py` | 7 | The five formulas against figures worked out by hand, that no rounding happens, and the zero-denominator cases |
+
+The tests need no database and no API key. The config tests read fixtures committed to the repository, and the database tests build their own in-memory data base from the real schema, so that no cross-test contamination can happen.
 
 ## Design decisions
 
-The decisions worth explaining, and why they went that way.
+The decisions I had to make during this project and why they went that way (Where I made every decision and Claude helped Structure my explanations):
 
 **Accounts are keyed on PUUID, not `name#tag`.** Riot IDs are changeable. Keying history on a display name means that the day I rename, new matches are stored under the new name while months of old matches sit under the old one. Queries then return only post-rename matches, with no error and numbers that look plausible. The PUUID never changes, so a rename updates one row and the history stays joined up.
 
@@ -97,7 +126,7 @@ The API serves a window of recent matches rather than career history. Measured a
 
 An earlier version of this section claimed the first ingestion run captured the only backfill that would ever exist. That was wrong. It came from a shell loop that read rate-limit error bodies as empty pages, because `jq '.data | length'` prints `0` for `null`, so an error and the end of the history looked identical.
 
-Matches do leave the window eventually, so each raw response is still archived at ingestion and `load_archive` can replay saved pages with no network calls. What changed is the urgency. A run that fails unnoticed for two weeks is now recoverable, because those matches are still inside the window. Reliability matters for a different reason: a silent partial failure produces aggregates that are wrong without looking wrong.
+Matches do leave the window eventually, so each raw response is still archived at ingestion and `load_archive` can replay saved pages with no network calls. A run that fails unnoticed for two weeks is now recoverable, because those matches are still inside the window. Reliability of the data ingested matters since a silent partial failure produces aggregates that are wrong without looking wrong.
 
 ## Verification
 
