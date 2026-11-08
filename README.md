@@ -20,6 +20,7 @@ Right now the aggregates are published as a read-only JSON API on Cloudflare Wor
 - [Tests and CI](#tests-and-ci)
 - [Design Decisions](#design-decisions)
 - [Deployed API](#deployed-api)
+- [Deploy your own](#deploy-your-own)
 - [Verification](#verification)
 - [Data constraints](#data-constraints)
 - [Project layout](#project-layout)
@@ -174,9 +175,14 @@ Reads the local database only and makes no API calls.
 
 ```bash
 python export_d1.py
-npx wrangler d1 execute valstats --remote --file worker/stats.sql
+cd worker && npx wrangler d1 execute valstats --remote --file stats.sql
 ```
 
+The export runs from the repo root, the load from `worker/`. Check it landed:
+
+```bash
+curl -s https://valstats-api.ixng.workers.dev/stats/combined | grep matches
+```
 ---
 
 ## Tests and CI
@@ -218,6 +224,36 @@ The aggregates are published as a read-only JSON API on Cloudflare Workers, back
 **Rates are computed in the Worker, not stored**, for the same reason the local database stores raw sums: a stored percentage cannot be re-aggregated. The cost is that the derivation exists twice, in `stats.py` and in `worker/src/index.ts`, and the two have to be changed together.
 
 ---
+## Deploy your own
+
+Build your own `valstats.db` first by following [Installation](#installation), [Configuration](#configuration) and [Setup](#setup) with your own Riot IDs and API key.
+
+Then sign up at [dash.cloudflare.com/sign-up](https://dash.cloudflare.com/sign-up) and enable a workers.dev subdomain under Workers & Pages. The free plan is enough.
+
+Every wrangler command runs from `worker/`, where `wrangler.jsonc` lives.
+
+```bash
+cd worker
+npx wrangler login
+npx wrangler d1 create <db-name>
+```
+
+`d1 create` prints a `database_id`. In `worker/wrangler.jsonc`, replace `database_id` with yours, set `database_name` to `<db-name>`, and change `name` since it becomes your hostname.
+
+```bash
+npx wrangler d1 execute <db-name> --remote --file schema.sql
+cd .. && python export_d1.py
+cd worker && npx wrangler d1 execute <db-name> --remote --file stats.sql
+npx wrangler deploy
+```
+
+`deploy` prints your URL, in the form `https://<name>.<your-subdomain>.workers.dev`. Opening it returns your index JSON.
+
+There are no secrets to set in Cloudflare. The Worker holds no API key and calls nothing but its own database.
+
+To publish new numbers later, repeat the export and the `stats.sql` load. `deploy` is only for Worker code changes.
+
+--
 
 ## Design decisions
 
