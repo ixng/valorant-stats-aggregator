@@ -124,8 +124,6 @@ def test_shared_match_counts_once_for_the_combined_view(conn):
 
     totals = db.headline_stats(conn)
 
-    # 40 kills is 20 each, so both rows reached the query. One row collapses
-    # to one match too, so the assertion below means nothing without this one.
     assert totals["kills"] == 40
     assert totals["matches"] == 1
 

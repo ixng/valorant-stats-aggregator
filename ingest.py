@@ -10,10 +10,7 @@ import config
 import db
 import resolve
 
-DB_PATH = "valstats.db"
-CONFIG_PATH = "accounts.toml"
 MAX_CONSECUTIVE_PAGE_FAILURES = 3
-MAP_PATH = "maps.toml"
 MAX_PAGES = 50
 SIZE = 10
 
@@ -184,7 +181,7 @@ def load_archive(conn, directory):
     """Load every match in the saved archive pages into the database.
 
     Reads the raw API responses saved under `directory` and passes each match
-    through save_match. Makes no API calls: this is the only source for matches
+    through save_match and makes no API calls as this is the only source for matches
     that have since aged out of the window the API serves.
 
     Returns (files_read, matches_saved).
@@ -251,11 +248,6 @@ def ingest_account(conn, puuid, api_key, label, full=False):
     such a page is older. Passing full keeps going to the end of the window instead,
     which is how a gap left by an interrupted run gets healed.
 
-    A page that fails is recovered match by match rather than abandoning the account,
-    since everything older than it would otherwise be unreachable. The account is given
-    up on after MAX_CONSECUTIVE_PAGE_FAILURES failures in a row, which distinguishes one
-    unservable match from the API being down.
-
     Returns (saved, skipped). AccountNotFound and InvalidApiKey propagate, since neither
     improves on the next page.
     """
@@ -290,8 +282,6 @@ def ingest_account(conn, puuid, api_key, label, full=False):
         if not page:
             break
 
-        # Asked before saving: afterwards every match on the page is stored,
-        # so the answer would always be "stop".
         page_ids = [match["metadata"]["match_id"] for match in page]
         known = db.known_match_ids(conn, page_ids)
 
@@ -339,13 +329,13 @@ def main(argv=None):
     args = parse_args(argv)
 
     api_key = config.load_api_key()
-    accounts = config.load_accounts(CONFIG_PATH)
-    conn = db.connect(DB_PATH)
+    accounts = config.load_accounts(config.CONFIG_PATH)
+    conn = db.connect(config.DB_PATH)
     failures = 0
     total_matches = 0
     try:
         db.create_tables(conn)
-        db.prefill_maps(conn, config.load_maps(MAP_PATH))
+        db.prefill_maps(conn, config.load_maps(config.MAP_PATH))
 
         for name, tag in accounts:
             label = f"{name}#{tag}"

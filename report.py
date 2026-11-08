@@ -1,10 +1,10 @@
 import argparse  # package that reads the command line for me
 import sys  # used for sys.exit so the scripts exit code reflects success or failure (0 success, 1 failure)
 
+import config
 import db  # to get the match counts and headline stats
 import stats  # turns the headline stats into rates such as acs, adr, winrate etc
 
-DB_PATH = "valstats.db"
 # I want to make a file i can call as a script in the command line that will formatt and show the stats for each player
 
 
@@ -31,12 +31,7 @@ def heading(first_column):
 
 
 def _cell(value, width, places):
-    """Format one numeric cell, or a right-aligned dash when the value is None.
-
-    stats.derive returns None for a ratio whose denominator is zero, and
-    f"{None:>6.1f}" raises TypeError. The dash is padded to the column width
-    so a row with a gap still lines up with the heading.
-    """
+    """Format one numeric cell, or a right-aligned dash when the value is None."""
     if value is None:
         return f"{'-':>{width}}"
     return f"{value:>{width}.{places}f}"
@@ -47,10 +42,6 @@ def format_row(label, totals):
 
     Rounding happens here and nowhere else, which is why derive keeps full
     precision.
-
-    stats.derive handles the no-matches case, so the early return below is
-    presentation rather than protection: one "no matches" line reads better
-    than a row of five dashes.
     """
     if not totals["matches"]:
         return f"{label:{LABEL_WIDTH}} {'no matches':>7}"
@@ -129,12 +120,11 @@ def main(argv=None):
     """Print the stored stats for the configured accounts.
 
     Returns 0 once something was printed, or 1 if --account named an account
-    that is not stored. A queue with no matches is not an error: the rows say
-    so instead.
+    that is not stored.
     """
     args = parse_args(argv)
 
-    conn = db.connect(DB_PATH)
+    conn = db.connect(config.DB_PATH)
     try:
         accounts = db.all_accounts(conn)
         puuid = None
@@ -150,7 +140,9 @@ def main(argv=None):
 
             accounts = [a for a in accounts if a["name"] == name and a["tag"] == tag]
             if not accounts:
-                print(f"{name}#{tag} is not stored in {DB_PATH}", file=sys.stderr)
+                print(
+                    f"{name}#{tag} is not stored in {config.DB_PATH}", file=sys.stderr
+                )
                 return 1
 
             puuid = accounts[0]["puuid"]
