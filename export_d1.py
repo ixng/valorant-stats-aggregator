@@ -8,13 +8,11 @@ Only the tracked accounts' own aggregates are written. No per-match rows and no
 raw responses leave the machine.
 """
 
-import pathlib
 import sys
 
+import config
 import db
 
-DB_PATH = "valstats.db"
-OUT_PATH = pathlib.Path("worker/stats.sql")
 QUEUE_ID = "competitive"
 
 COLUMNS = (
@@ -89,7 +87,7 @@ def statements(rows):
 
 
 def main(argv=None):
-    conn = db.connect(DB_PATH)
+    conn = db.connect(config.DB_PATH)
     try:
         rows = collect(conn)
     finally:
@@ -99,8 +97,8 @@ def main(argv=None):
         print("nothing to export", file=sys.stderr)
         return 1
 
-    OUT_PATH.write_text("\n".join(statements(rows)) + "\n")
-    print(f"wrote {len(rows)} rows to {OUT_PATH}")
+    config.OUT_PATH.write_text("\n".join(statements(rows)) + "\n")
+    print(f"wrote {len(rows)} rows to {config.OUT_PATH}")
     return 0
 
 

@@ -16,3 +16,6 @@ venv/
 worker/node_modules/
 worker/stats.sql
 .wrangler/
+docs/
+.claude/ 
+.worktrees/

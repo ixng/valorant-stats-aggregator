@@ -4,9 +4,6 @@ import api
 import config
 import db
 
-DB_PATH = "valstats.db"
-CONFIG_PATH = "accounts.toml"
-
 
 def resolve_account(conn, name, tag, api_key):
     """Checks the cache first. If it is a miss then it calls the api, saves the result, and returns the PUUID."""
@@ -23,8 +20,8 @@ def resolve_account(conn, name, tag, api_key):
 def main():
     """Loads the config and api-key, opens the database then resolves every account. If one account fails it reports it then continues with the rest. Exits with a non zero value if any account failed."""
     api_key = config.load_api_key()
-    accounts = config.load_accounts(CONFIG_PATH)
-    conn = db.connect(DB_PATH)
+    accounts = config.load_accounts(config.CONFIG_PATH)
+    conn = db.connect(config.DB_PATH)
     db.create_accounts_table(conn)
 
     failures = 0

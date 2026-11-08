@@ -1,13 +1,8 @@
 # The competitive maps, prefilled into the maps lookup table so the dashboard can
 # show a map with no matches yet instead of omitting it.
-#
-# This list controls what the dashboard offers, not what the database accepts.
-# Ingestion still inserts any other map it meets, such as the team deathmatch
-# maps, so no match is left pointing at a missing lookup row.
-#
+
 # Ids come from GET /valorant/v1/content?locale=en-US on 2026-09-29.
-# A map leaving the active rotation does not remove it from match history, so
-# entries stay here once added.
+
 
 
 [[maps]]

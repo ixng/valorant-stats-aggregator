@@ -304,7 +304,6 @@ Matches do leave the window eventually, so each raw response is still archived a
 | `worker/` | the Cloudflare Worker and its D1 schema |
 | `tests/` | pytest suite, with one-defect config fixtures |
 | `.github/workflows/` | the CI workflow |
-| `docs/api-notes.md` | findings from testing the API by hand |
 | `pyproject.toml`, `requirements*.txt` | pytest configuration and pinned dependencies |
 
 If you are reading the code, start with `ingest.py` for how matches are fetched and stored, then `db.py` for the aggregation queries and the counting rule they implement.

@@ -287,16 +287,8 @@ def match_counts(conn, puuid=None, queue_id="competitive"):
 
 
 def headline_stats(conn, puuid=None, queue_id="competitive"):
-    """Return the raw totals for these matches. All accounts combined when puuid is None.
+    """Return the raw totals for these matches. All accounts combined when puuid is None."""
 
-    Sums only: every ratio is derived by the caller.
-
-    The row deliberately holds two grains. `matches` and `wins` count distinct
-    match ids, so a match that two tracked accounts played together counts once.
-    Every other total is per appearance, and that is what keeps the per-round
-    rates correct: such a match contributes both players' scores and both
-    players' rounds, so the numerator and denominator rise together.
-    """
     cursor = conn.execute(
         "SELECT COUNT(DISTINCT m.match_id) AS matches, COUNT(DISTINCT CASE WHEN t.won = 1 THEN m.match_id END) AS wins, SUM(p.kills) AS kills, SUM(p.deaths) AS deaths , SUM(p.assists) AS assists, SUM(p.score) AS score, SUM(p.damage_dealt) AS damage, SUM(p.headshots) AS headshots, SUM(p.bodyshots) AS bodyshots, SUM(p.legshots) AS legshots, SUM(p.first_bloods) AS first_bloods, SUM(t.rounds_won + t.rounds_lost) AS rounds "
         "FROM performances p "
